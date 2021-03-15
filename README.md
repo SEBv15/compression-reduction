@@ -12,31 +12,31 @@ Bit shuffling module that groups bits by significance
 
 Main module that incorporates all the other modules. Takes in pixel data, compresses it, and writes it to the FIFO.
 
-Depends on: `EnsureBlocks.scala`, `HierarchicalReduction.scala`, `LengthCompress.scala`, `PoissonEncoding.scala`
+Depends on: [`EnsureBlocks.scala`](#ensureblocksscala), [`HierarchicalReduction.scala`](#hierarchicalreductionscala), [`LengthCompress.scala`](#lengthcompressscala), [`PoissonEncoding.scala`](#poissonencodingscala)
 
 ### `CompressionReductionWrapper.scala`
 
 Wrapper for `CompressionReduction.scala` that simplifies the ports
 
-Depends on: `CompressionReduction.scala`
+Depends on: [`CompressionReduction.scala`](#compressionreductionscala)
 
 ### `EnsureBlocks.scala`
 
 This module ensures that there are always at least 2 blocks written to the FIFO. It also packs consecutive shifts to increase compression ratio. The metadata at the beginning of every block is also inserted here.
 
-Depends on: `MakeUnusedDefault.scala`, `Merger.scala`
+Depends on: [`MakeUnusedDefault.scala`](#makeunuseddefaultscala), [`Merger.scala`](#mergerscala)
 
 ### `HierarchicalReduction.scala`
 
 Takes data from the compressors, generates the hierarchical headers, and reduces the data + headers.
 
-Depends on: `Merger.scala`, `Reduction.scala`
+Depends on: [`Merger.scala`](#mergerscala), [`Reduction.scala`](#reductionscala)
 
 ### `LengthCompress.scala`
 
 The main compressor. Simply passes the data through and generates a header which indicates the position of the last non-zero word.
 
-Depends on: `BitShufflePerChannel.scala`
+Depends on: [`BitShufflePerChannel.scala`](#bitshuffleperchannelscala)
 
 ### `MakeUnusedDefault.scala`
 
@@ -54,7 +54,7 @@ Merges data by moving elements from the end of the second input into the gap bet
 
 Module which can switch between Merge and MergeWeird (during verilog generation) based on a parameter.
 
-Depends on: `Merge.scala`, `MergeWeird.scala`
+Depends on: [`Merge.scala`](#mergescala), [`MergeWeird.scala`](#mergeweirdscala)
 
 ### `PoissonEncoding.scala`
 
@@ -64,7 +64,7 @@ Reduces the number of bits needed to represent a pixel value by leveraging poiss
 
 A general reduction module which takes in a number of different vecs and outputs continuous data. This is used to reduce the headers and data. Uses `Merger.scala` internally.
 
-Depends on: `Merger.scala`
+Depends on: [`Merger.scala`](#mergerscala)
 
 ## Usage
 
