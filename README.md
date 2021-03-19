@@ -76,3 +76,4 @@ sbt 'runMain compression.[module class name]'
 To run a test case
 ```sh
 sbt 'testOnly compression.[test case class name] --'
+```
