@@ -40,8 +40,7 @@ class ReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
                 }
 
                 // Get the output and put it into an array
-                var outlen = c.io.outlength.peek().litValue.toInt
-                outlen = ninputs*nelems
+                val outlen = c.io.outlength.peek().litValue.toInt
                 val out = new Array[BigInt](outlen)
                 for (i <- 0 until outlen) {
                     out(i) = c.io.out(i).peek().litValue

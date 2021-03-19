@@ -4,114 +4,60 @@ import org.scalatest._
 import chiseltest._
 import chisel3._
 
-import scala.math.pow
 import scala.math.floor
 import scala.math.max
 
-import scala.collection.mutable.ListBuffer
-import scala.collection.breakOut
+import scala.util.Random
 
-/**
- * THIS DOES MOST LIKELY NOT WORK WITH THE CURRENT HierarchicalReduction MODULE!!!
+import testUtils._
+
+/** Tests the HierarchicalReduction module by inputting randomly generated numbers, reversing the output in scala, and checking it against the input.
+ *
+ *  @author Sebastian Strempfer
  */
-
 class HierarchicalReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
     // Number of compressors to test the reduction stage with (32 is max for me before running out of memory)
-    val ncompressors = 64
-
-    def weirdlyMergeLists(one:ListBuffer[Int], two:ListBuffer[Int], len1:Int, len2:Int) = {
-        val totlen = one.length + two.length
-        val pivot = max(0, one.length + two.length - len1)
-        val twof = two ++ List.fill(len2 - two.length)(0)
-        val outlist:ListBuffer[Int] = one ++ twof.slice(pivot, len1 - one.length + pivot) ++ two
-        outlist.slice(0, totlen)
-    }
+    val ncompressors = 16
+    val nelems = 7
+    val maxblocks = 128
 
     it should "test-hierachical-reduction" in {
         // test case body here
-        test(new HierarchicalReduction(ncompressors, 7, 16, 128)) { c =>
-            val r = new scala.util.Random(1)
-            val lengths:ListBuffer[Int] = (0 until ncompressors).map(i => r.nextInt(10))(breakOut)
-            var inp:ListBuffer[ListBuffer[Int]] = new ListBuffer[ListBuffer[Int]]
-            for (i <- 0 until ncompressors) {
-                inp.append(new ListBuffer[Int])
-                for (j <- 0 until lengths(i)) {
-                    inp(i) = inp(i) :+ r.nextInt(1024)
+        test(new HierarchicalReduction(ncompressors, nelems, 16, maxblocks)) { c =>
+            val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.
+            val maxval = (1 << 16) - 1
+
+            for (_ <- 0 until 10) {
+                val lens = new Array[Int](ncompressors)
+                val inp = Array.fill(ncompressors)(Array.fill(nelems)(0))
+
+                // Generate random input data and give it to the module
+                for (i <- 0 until ncompressors) {
+                    lens(i) = r.nextInt(nelems+1)
+                    c.io.headerin(i).poke(lens(i).U)
+                    for (j <- 0 until lens(i))
+                        inp(i)(j) = r.nextInt(maxval+1)
+                    for (j <- 0 until nelems)
+                        c.io.datain(i)(j).poke(inp(i)(j).U)
                 }
-            }
 
-            println(inp)
-
-            // Input the data into the reduction stage
-            for (i <- 0 until inp.length) {
-                for (j <- 0 until 10) {
-                    c.io.datain(i)(j).poke((if (inp(i).length <= j) 0 else inp(i)(j)).U)
+                // Get the output and put it into an array
+                var outlen = c.io.outlen.peek().litValue.toInt
+                val out = new Array[BigInt](outlen)
+                for (i <- 0 until outlen) {
+                    out(i) = c.io.out(i).peek().litValue
                 }
-                c.io.headerin(i).poke(lengths(i).U)
-            }
 
-            // Slowly turn the 2D list into essentially a 1D list with the data in the expected order and filler zeros where needed
-            var mod = 2
-            var len = 10
-            var llen = 10
-            while (inp.length != 1) {
-                // When the reduction stage in the module merges two adjacent data, add filler zeros where needed
-                if (len > 128) {
-                    len /= 2
-                    for (i <- 0 until inp.length) {
-                        if (inp(i).length % mod != 0) {
-                            val toadd = (mod - (inp(i).length % mod))
-                            for (j <- 0 until toadd) {
-                                inp(i) = inp(i) :+ 0
-                            }
-                        }
-                    }
-                    mod *= 2
-                }
-                inp = (0 until inp.length / 2).map(i => weirdlyMergeLists(inp(2*i), inp(2*i+1), llen, llen))(breakOut)
-                len *= 2
-                llen *= 2
-            }
+                val (headers, num_3bits) = getHeaders(out, ncompressors, 3, 16)
 
-            // Count the number of headers > 2 and generate a list of headers > 2.
-            var numheaders = 0
-            var bigheaders:ListBuffer[Int] = new ListBuffer[Int]
-            var bigheaders16:ListBuffer[Int] = new ListBuffer[Int]
-            for (i <- 0 until lengths.length) {
-                if (lengths(i) > 2) {
-                    numheaders += 1
-                    bigheaders = bigheaders :+ lengths(i)
-                }
-            }
-            numheaders += (16 - numheaders % 16) // Since there might be a gap between where the headers end and the data starts, adjust the "numheaders" accordingly
+                val red_out = reverseMergeWeird(out.slice(ncompressors*2/16, out.length), (num_3bits*3 + 15)/16, calculateReductionOutputLength(headers, maxblocks, nelems), (ncompressors*3 + 15)/16)
 
-            for (i <- 0 until (bigheaders.length / 4.0).ceil.toInt) {
-                bigheaders16 = bigheaders16 :+ ((bigheaders.applyOrElse(4*i, (x:Int) => 0) << 12) + (bigheaders.applyOrElse(4*i+1, (x:Int) => 0) << 8) + (bigheaders.applyOrElse(4*i+2, (x:Int) => 0) << 4) + (bigheaders.applyOrElse(4*i+3, (x:Int) => 0)))
-            }
+                val reversed = reverseWeirdReduction(red_out.slice((ncompressors*3 + 15)/16, red_out.length), headers, maxblocks, nelems)
 
-            println(bigheaders.length)
-            println(bigheaders16.length)
-            println(bigheaders16)
-
-            // Print the output of the reduction stage
-            var out: ListBuffer[BigInt] = new ListBuffer[BigInt]
-            for (i <- 0 until ncompressors * 10 + (ncompressors/8 + numheaders/4).ceil.toInt) {
-                out = out :+ c.io.out(i).peek().litValue()
-            }
-            println(out)
-
-            
-            // Check if the 2-bit headers are correct
-            val twobit_headers = (0 until ncompressors).map(x => if (lengths(x) > 2) 3 else lengths(x))
-            for (i <- 0 until ncompressors/8) {
-                c.io.out(i).expect(((twobit_headers(8*i) << 14) + (twobit_headers(8*i+1) << 12) + (twobit_headers(8*i+2) << 10) + (twobit_headers(8*i+3) << 8) + (twobit_headers(8*i+4) << 6) + (twobit_headers(8*i+5) << 4) + (twobit_headers(8*i+6) << 2) + (twobit_headers(8*i+7) << 0)).U)
-            }
-
-            var outdat = weirdlyMergeLists(bigheaders16, inp(0), ncompressors/4, 10*64)
-            println(outdat)
-
-            for (i <- 0 until outdat.length) {
-                c.io.out(i + (ncompressors/8).ceil.toInt).expect(outdat(i).U)
+                // Check if the input data is the same as the reversed output
+                for (i <- 0 until ncompressors)
+                    for (j <- 0 until lens(i))
+                        assert(reversed(nelems*i+j) == inp(i)(j))
             }
         }
     }

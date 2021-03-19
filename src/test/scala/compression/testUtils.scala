@@ -36,6 +36,22 @@ object testUtils {
         return ((enc-36) << 4) + 8
     }
 
+    /** Concatenate an array like chisel would if it were a Vec
+     *
+     *  @author Sebastian Strempfer
+     * 
+     *  @param data The array to concatenate
+     *  @param wordsize Number of bits in each array element
+     */
+    def intListConcat(data: Array[BigInt], wordsize: Int) = {
+        var out: BigInt = 0
+        for (e <- data) {
+            out <<= wordsize
+            out += e
+        }
+        out
+    }
+
     /** Reverse the operation done by a MergeWeird module
      *
      *  @author Sebastian Strempfer
@@ -44,10 +60,40 @@ object testUtils {
      *  @param len1 The length of the first input into the merge module
      *  @param len2 The length of the second input into the merge module
      *  @param size1 The size of the Vec holding the data for the first input (aka max len1)
+     *
+     *  @return The input into the merge module
      */
-    def reverseMergeWeird(data: Array[BigInt], len1: Int, len2: Int, size1: Int) = {
+    def reverseMergeWeird(data: Array[BigInt], len1: Int, len2: Int, size1: Int): Array[BigInt] = {
         val pivot = if (len1 + len2 > size1) len1 + len2 - size1 else 0
-        data.slice(0, len1) ++ Array.fill(size1-len1)(0) ++ data.slice(size1, size1+pivot) ++ data.slice(len1, size1)
+        val padding: Array[BigInt] = Array.fill(size1-len1)(0)
+        data.slice(0, len1) ++ padding ++ data.slice(size1, size1+pivot) ++ data.slice(len1, size1)
+    }
+
+    /** Calculates how long the output of a reduction module would be based on the input lengths
+     *
+     *  @author Sebastian Strempfer
+     */
+    def calculateReductionOutputLength(lengths: Array[Int], maxblocks: Int = 128, elems: Int = 7): Int = {
+        val ls = new Array[Int](lengths.length)
+        lengths.copyToArray(ls)
+
+        var ms = ls.length / 2
+        var m = 1
+        var l = elems
+        while (ms >= 1) {
+            l *= 2
+            if (l > maxblocks) {
+                l /= 2
+                m *= 2
+            }
+            for (i <- 0 until ms) {
+                ls(i) = ls(2*i) + ls(2*i+1)
+                ls(i) += (m - (ls(i) % m)) % m
+            }
+
+            ms /= 2
+        }
+        return ls(0)
     }
 
     /** Reverse the operation done by a single weird reduction stage
@@ -58,6 +104,8 @@ object testUtils {
      *  @param lengths The lengths of the data inputted into the reduction stage
      *  @param maxblocks The maximum number of input elements into any merge module in the reduction
      *  @param elems Size of the input Vecs
+     *
+     *  @return Reduction stage input data as a flattened 2D array
      */
     def reverseWeirdReduction(data: Array[BigInt], lengths: Array[Int], maxblocks: Int = 128, elems: Int = 7): Array[BigInt] = {
         val n = lengths.length // Number of inputs into the reduction stage
@@ -108,5 +156,39 @@ object testUtils {
         }
 
         return out
+    }
+
+    /** Get headers from HierarchicalReduction output
+     *
+     *  @author Sebastian Strempfer
+     *
+     *  @param data The header data like it is outputted from the HierarchicalReduction stage
+     *  @param ncompressors The number of compressors the headers come from
+     *  @param headersize Number of bits in the full header
+     *  @param elemwidth The bit width of each element in the input
+     *
+     *  @return Tuple of the headers and the number of full-sized headers
+     */
+    def getHeaders(data: Array[BigInt], ncompressors: Int = 64, headersize: Int = 3, elemwidth: Int = 16) = {
+        val num2bitelems = (ncompressors*2 + elemwidth)/elemwidth
+        var twobit_data = intListConcat(data.slice(0, num2bitelems), elemwidth)
+        twobit_data >>= elemwidth - (ncompressors*2 % elemwidth)
+        val twobit_headers = (0 until ncompressors*2 by 2).map(i => (twobit_data >> (ncompressors - 1)*2 - i) & 3)
+
+        var threebit_data = intListConcat(data.slice(ncompressors*2/elemwidth, (ncompressors*(2 + headersize) + elemwidth-1)/elemwidth), elemwidth)
+        threebit_data >>= (elemwidth - (ncompressors*(2 + headersize) % elemwidth)) % elemwidth
+        val threebit_headers = (0 until ncompressors*headersize by headersize).map(i => (threebit_data >> (headersize*(ncompressors-1)) - i) & ((1 << headersize)-1))
+
+        var i3 = 0
+        var headers = new Array[Int](ncompressors)
+        for (i <- 0 until ncompressors) {
+            if (twobit_headers(i) < 2) {
+                headers(i) = twobit_headers(i).toInt
+            } else {
+                headers(i) = threebit_headers(i3).toInt
+                i3 += 1
+            }
+        }
+        (headers, i3)
     }
 }
