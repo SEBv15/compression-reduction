@@ -24,7 +24,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     val io = IO(new Bundle {
         val in = Input(Vec(inwords, UInt(wordsize.W)))  // Incoming data
         val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
-        val frame_num = Input(UInt((reservebits-1).W))  // Frame number of the data
+        val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
         val out = Output(Vec(10, UInt(1024.W)))         // 10 1024-bit output words
         val blocks_used = Output(UInt(4.W))             // How many blocks contain data
@@ -97,6 +97,10 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     // --------- FORMAT REGISTER DATA FOR FIFO ----
 
+    val metadata_inserter = Module(new InsertEndMetadata(inbits, wordsize, reservebits, 16))
+    metadata_inserter.io.len := len_reg
+    metadata_inserter.io.metadata := frame_num_reg
+
     // Take the data from the register and put it into 10 1024-bit words with metadata at the front.
     for (i <- 0 until 10) {
         val vecmin = inwords * wordsize - i*(1024-reservebits) - 1 // Leftmost bit index
@@ -110,10 +114,11 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
         // Add the metadata in the beginning, set the first bit to 1 if i==0, and add the data after.
         if (vecmin > 0) {
-            io.out(i) := Cat(Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
+            metadata_inserter.io.blocks(i) := Cat(Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
         } else {
-            io.out(i) := Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
+            metadata_inserter.io.blocks(i) := Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
         }
+        io.out(i) := metadata_inserter.io.out(i)
     }
 
     // Calculate the number of blocks used by ceil dividing by elems-per-block. Also, can't have just 1 block. In that case we just send a completely empty block (very rare)
