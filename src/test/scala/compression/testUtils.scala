@@ -52,6 +52,34 @@ object testUtils {
         out
     }
 
+    /** Strips the 8-bit metadata from the blocks, combines them, and turns them into a neat list of 16-bit words
+     *
+     *  @author Sebastian Strempfer
+     *
+     *  @param blocks List of 1024-bit blocks
+     *  @param blocksize bit width of the words in the output
+     */
+    def blocksToData(blocks: Array[BigInt], blocksize: Int = 16): Array[BigInt] = {
+        var data: BigInt = 0
+        var big_one: BigInt = 1
+        var len = 0
+        for (block <- blocks) {
+            data <<= 1024-8
+            data += block & ((big_one << 1024-8)-1)
+            len += 1024-8
+        }
+        data >>= len % blocksize
+        len -= len % blocksize
+        var words = new ArrayBuffer[BigInt]
+        while (len > 0) {
+            words += data & ((big_one << blocksize) - 1)
+            data >>= blocksize
+            len -= blocksize
+        }
+        val wlist = words.reverse
+        return wlist.toArray
+    }
+
     /** Reverse the operation done by a MergeWeird module
      *
      *  @author Sebastian Strempfer

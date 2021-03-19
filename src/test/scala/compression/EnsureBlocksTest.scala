@@ -4,84 +4,58 @@ import org.scalatest._
 import chiseltest._
 import chisel3._
 
-import scala.collection.mutable.ListBuffer
+import scala.collection.mutable.ArrayBuffer
+import scala.collection.mutable.Queue
 import scala.io.Source
 
 import scala.math.pow
 
-/** Test the EnsureBlocks module. This test is not very complete and will always pass.
+import scala.util.Random
+
+import testUtils._
+
+/** Test the EnsureBlocks module by inputting data and checking if it comes out again in the same order
  *  
  *  @author Sebastian Strempfer
- *  @todo Make better
  */
 class EnsureBlocksTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    def printdata(c: EnsureBlocks, inwords: Int, wordsize: Int) {
-        println("This tick we got:")
-        if (c.io.write_enable.peek().litValue != 0) {
-            val len = c.io.blocks_used.peek().litValue
-            println(len)
-            var offs = wordsize - 8
-            for (i <- 0 until len.toInt) {
-                var value = c.io.out(i).peek().litValue
-                println(value.toString(2))
-                val mask = (pow(2, wordsize)-1).toLong
-                var l = new ListBuffer[BigInt]()
-                println("Is first frame", value >> 1023)
-                println("Frame Num", (value >> 1016) & ((1 << 7) - 1))
-                println((value >> 1016 - 64) & mask)
-                for (j <- 0 until 1024/wordsize) {
-                    l.append(value & mask)
-                    if (j == 0) {
-                        value >>= offs
-                    } else {
-                        value >>= wordsize 
-                    }
-                }
-                offs = (offs + wordsize - 8) % wordsize
-                println(l)
-            }
-        }
-    }
+    val q = new Queue[BigInt]()
+
     it should "test-ensure-blocks" in {
         // test case body here
         test(new EnsureBlocks()) { c =>
-            val inwords = (64*7*16 + 64*5)/64
-            val wordsize = 64
-            c.io.frame_num.poke(1.U)
-            for (i <- 0 until inwords) {
-                c.io.in(i).poke(13.U)
+            val r = new Random(1)
+            val big_one: BigInt = 1
+
+            for (n <- 0 until 100) {
+                c.io.frame_num.poke(n.U)
+                c.io.fifo_full.poke(0.B)
+                val len = r.nextInt(16*7+5)
+                c.io.len.poke(len.U)
+                for (i <- 0 until len) {
+                    val dat = r.nextInt((big_one << 16).toInt) // big numbers throw errors
+                    q += dat
+                    c.io.in(i).poke(dat.U)
+                }
+
+                if (c.io.write_enable.peek().litValue != 0) {
+                    val outl = c.io.blocks_used.peek().litValue
+                    var blocks = new ArrayBuffer[BigInt]()
+                    for (i <- 0 until outl.toInt) {
+                        blocks += c.io.out(i).peek().litValue
+                    }
+
+                    val data = blocksToData(blocks.toArray, 64)
+
+                    for (d <- data) {
+                        if (d != (big_one << 64)-1) { // filler words have all 1s set
+                            assert(q.dequeue == d.toInt)
+                        }
+                    }
+                }
+
+                c.clock.step()
             }
-            c.io.len.poke(inwords.U)
-            c.io.fifo_full.poke(0.B)
-            printdata(c, inwords, wordsize)
-            c.clock.step()
-
-            c.io.frame_num.poke(2.U)
-            for (i <- 0 until inwords) {
-                c.io.in(i).poke(12.U)
-            }    
-            c.io.len.poke(1.U)    
-            printdata(c, inwords, wordsize)
-            c.clock.step()
-
-            c.io.frame_num.poke(3.U)
-            for (i <- 0 until inwords) {
-                c.io.in(i).poke(11.U)
-            }    
-            c.io.len.poke(5.U)
-            printdata(c, inwords, wordsize)
-            c.clock.step()
-
-            c.io.frame_num.poke(4.U)
-            for (i <- 0 until inwords) {
-                c.io.in(i).poke(10.U)
-            }    
-
-            c.io.len.poke(inwords.U)
-            printdata(c, inwords, wordsize)
-            c.clock.step()
-
-            printdata(c, inwords, wordsize)
         }
     }
 }
