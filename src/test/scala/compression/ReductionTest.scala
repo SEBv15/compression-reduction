@@ -24,7 +24,7 @@ class ReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
             val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.
             val maxval = (1 << elemwidth) - 1
 
-            // Run the test for 100 different inputs
+            // Run the test for 10 different inputs
             for (_ <- 0 until 10) {
                 val lens = new Array[Int](ninputs)
                 val inp = Array.fill(ninputs)(Array.fill(nelems)(0))
