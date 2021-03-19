@@ -58,6 +58,8 @@ object testUtils {
      *
      *  @param blocks List of 1024-bit blocks
      *  @param blocksize bit width of the words in the output
+     *
+     *  @return The data from the blocks as a list of blocksize wide words
      */
     def blocksToData(blocks: Array[BigInt], blocksize: Int = 16): Array[BigInt] = {
         var data: BigInt = 0
