@@ -42,8 +42,8 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
             twobit_headers(i) := io.headerin(i)
         }
     }
-    val twobits_per_word = ncompressors*2/wordsize
-    val twobit_headers_wordsize = (0 until twobits_per_word).map(x => Cat(twobit_headers.slice(twobits_per_word*x, twobits_per_word*(x+1))))
+    val twobits_per_word = wordsize/2
+    val twobit_headers_wordsize = (0 until ncompressors*2/wordsize).map(x => Cat(twobit_headers.slice(twobits_per_word*x, twobits_per_word*(x+1))))
 
     // Reduce full sized headers together
     val header_reduction = Module(new Reduction(ncompressors, 1, headerwidth, 0, false))
