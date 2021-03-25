@@ -42,7 +42,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     val hold_reg = List.fill(inwords)(RegInit(defaultval.U(wordsize.W))) // Register for the data
     val len_reg = RegInit(0.U((log2Floor(inwords)+1).W)) // Register for how many elements are used
-    val frame_num_reg = RegInit(io.frame_num) // Keep the frame number of the first frame in the register to output as frame number in the metadata
+    val frame_num_reg = RegInit(0.U(16.W)) // Keep the frame number of the first frame in the register to output as frame number in the metadata
     val data_dropped_reg = RegInit(0.B)
     
     // Make the value of the data register a vector for easier use later
@@ -90,7 +90,11 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         merger.io.len1 := len_reg
         io.write_enable := 0.B
         //frame_num_reg := (frame_num_reg +& (1 << 7).U)(6, 0)
-        frame_num_reg := frame_num_reg
+        when (len_reg === 0.U) {
+            frame_num_reg := io.frame_num
+        }.otherwise {
+            frame_num_reg := frame_num_reg
+        }
         data_dropped_reg := data_dropped_reg
         io.data_dropped := data_dropped_reg
     }

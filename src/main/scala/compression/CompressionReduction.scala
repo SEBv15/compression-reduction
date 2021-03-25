@@ -6,6 +6,7 @@ import chisel3.util._
 /** Compression.
  *
  *  @author Sebastian Strempfer
+ *  @todo Add sync pulse input and set last 4 bits of frame counter to zero when high
  *
  *  @param pixel_rows The number of pixel rows
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
