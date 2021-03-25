@@ -17,6 +17,8 @@ def main():
                 if tm > maximum:
                     maximum = tm
 
+        print(maximum)
+
         with open(f'C:/Users/Sebastian/Documents/argonne/fpga/compression_simulation/{FILE["path"]}', 'rb') as f:
             with open(f'data/{FILE["name"]}.bin', 'wb+') as outf:
                 combine = min(FILE["width"], FILE["height"]) // 128

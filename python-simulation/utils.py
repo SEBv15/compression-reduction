@@ -206,6 +206,8 @@ def reduce_bits(frame: np.ndarray, cbits: float, tbits: float) -> np.ndarray:
     frame = frame.ravel()
     for i in range(128*128):
         frame[i] = frame[i] // div + (1 if (frame[i] % div) > thresholds[i] else 0)
+        if frame[i] > 1023:
+            frame[i] = 1023
     return frame.reshape((128, 128))
 
 def get_raw_frames(file, width, height, x, y, combine = 1, dtype=np.uint32, bytes_per_pixel=4, bits_per_pixel=10, reduce_custom=None, **kwargs):
