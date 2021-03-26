@@ -116,6 +116,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         test(new CompressionReduction) { c =>
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.use_nth.poke(1.U)
 
             val r = new Random(1)
 

@@ -24,6 +24,8 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
         val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(10.W))))
         val fifo_full = Input(Bool())
         val bypass_compression = Input(Bool())
+        val frame_sync = Input(Bool())
+        val use_nth = Input(UInt(8.W))
         val blocks = Output(Vec(10, UInt(1024.W)))
         val blocks_used = Output(UInt(4.W))
         val write_enable = Output(Bool())
@@ -32,7 +34,13 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
     // Register which increments every tick
     val shift_num = RegInit(0.U(16.W))
-    shift_num := shift_num + 1.U
+    when (io.frame_sync) {
+        // On frame sync, extract the frame number (discarding the last 4 shift number bits), increase it by one, and set the shift number to zero.
+        // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
+        shift_num := Cat(shift_num(15, 4) + 1.U, 0.U(4.W))
+    }.otherwise {
+        shift_num := shift_num + 1.U
+    }
 
     // Encode the pixels from 10 bits to 7
     val encoder = List.fill(pixel_rows)(List.fill(pixel_cols)(Module(new PoissonEncoding)))
@@ -66,7 +74,12 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     // Pass the data through our merger / 2 block ensurer
     val block_merger = Module(new EnsureBlocks(pixel_rows/2*(7*16 + 5), 64, 8))
     block_merger.io.in := reduced_64
-    block_merger.io.len := (reducer.io.outlen +& 3.U) / 4.U
+    // Only use every nth frame
+    when (shift_num(15, 4) % io.use_nth === 0.U) {
+        block_merger.io.len := (reducer.io.outlen +& 3.U) / 4.U
+    }.otherwise {
+        block_merger.io.len := 0.U
+    }
     block_merger.io.frame_num := shift_num
     block_merger.io.fifo_full := io.fifo_full
 
