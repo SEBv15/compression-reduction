@@ -33,6 +33,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     })
 
     val num_guaranteed = 2*(1024 - reservebits)/wordsize // Number of words needed to fill 2 1024-bit blocks
+    val fifo_size = 10*(1024 - reservebits)/wordsize
 
     // Generate default value of all ones
     var defaultval: BigInt = 1
@@ -40,33 +41,31 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     // --------- REGISTER DECLARATION --------------
 
-    val hold_reg = List.fill(inwords)(RegInit(defaultval.U(wordsize.W))) // Register for the data
+    val hold_reg = List.fill(fifo_size)(RegInit(defaultval.U(wordsize.W))) // Register for the data
     val len_reg = RegInit(0.U((log2Floor(inwords)+1).W)) // Register for how many elements are used
     val frame_num_reg = RegInit(0.U(16.W)) // Keep the frame number of the first frame in the register to output as frame number in the metadata
     val data_dropped_reg = RegInit(0.B)
+    val blocks_merged_reg = RegInit(0.U(7.W))
     
     // Make the value of the data register a vector for easier use later
-    val reg_vec = Wire(Vec(inwords, UInt(wordsize.W)))
-    for (i <- 0 until inwords) {
+    val reg_vec = Wire(Vec(fifo_size, UInt(wordsize.W)))
+    for (i <- 0 until fifo_size) {
         reg_vec(i) := hold_reg(i)
     }
 
     // --------- MERGE MODULE ----------------------
 
     // Merger to merge the old data with the new
-    val merger = Module(new Merger(wordsize, num_guaranteed, inwords, 0, 0, false)) // Could possibly be optimized, but this works
-    val fixunused = Module(new MakeUnusedDefault(inwords, wordsize)) // The merger doesn't care about unused bits. However we need them to be all 1s.
+    val merger = Module(new Merger(wordsize, fifo_size, inwords, 0, 0, false, fifo_size)) // Could possibly be optimized, but this works
 
     // Connect the merger output to the registers
-    fixunused.io.inlen := merger.io.outlen
-    for (i <- 0 until inwords) {
-        fixunused.io.in(i) := merger.io.out(i)
-        hold_reg(i) := fixunused.io.out(i)
+    for (i <- 0 until fifo_size) {
+        hold_reg(i) := merger.io.out(i)
     }
-    len_reg := fixunused.io.outlen
+    len_reg := merger.io.outlen
     
     // Set the first merger input as the register
-    for (i <- 0 until num_guaranteed) {
+    for (i <- 0 until fifo_size) {
         merger.io.data1(i) := hold_reg(i)
     }
     // Set the second input as the new data
@@ -78,18 +77,22 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     // --------- MAIN LOGIC -----------------------
 
     val combinedlen = io.len +& len_reg
-    // Decide whether to output the data and clear the register. This condition should provide the best compression ratio while not hoarding data. 
-    // It might be slightly better if we just keep the data until the new data doesn't fit anymore. This would require a bigger merge module.
-    when (combinedlen > num_guaranteed.U && !(len_reg <= ((1024-reservebits)/wordsize).U && io.len <= (inwords - num_guaranteed).U)) {
+    // Decide whether to output the data and clear the register.
+    when (combinedlen > fifo_size.U) {
         merger.io.len1 := 0.U            // Discard the data that was just written to the FIFO
         io.write_enable := ~io.fifo_full // Write out the data in the register (or don't if the FIFO say it's full)
         frame_num_reg := io.frame_num    // Set the frame num of the next write to the frame number of the new data that is just incoming
         data_dropped_reg := io.fifo_full
         io.data_dropped := io.fifo_full
+
+        when (io.len === 0.U) {
+            blocks_merged_reg := 0.U
+        }.otherwise {
+            blocks_merged_reg := 1.U
+        }
     }.otherwise {
         merger.io.len1 := len_reg
         io.write_enable := 0.B
-        //frame_num_reg := (frame_num_reg +& (1 << 7).U)(6, 0)
         when (len_reg === 0.U) {
             frame_num_reg := io.frame_num
         }.otherwise {
@@ -97,6 +100,16 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         }
         data_dropped_reg := data_dropped_reg
         io.data_dropped := data_dropped_reg
+
+        when (merger.io.outlen === 0.U) {
+            blocks_merged_reg := 0.U
+        }.otherwise {
+            when (io.len === 0.U) {
+                blocks_merged_reg := blocks_merged_reg
+            }.otherwise {
+                blocks_merged_reg := blocks_merged_reg +& 1.U
+            }
+        }
     }
 
     // --------- FORMAT REGISTER DATA FOR FIFO ----
@@ -105,10 +118,15 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     metadata_inserter.io.len := len_reg
     metadata_inserter.io.metadata := frame_num_reg
 
+    val first_block_metadata = Wire(UInt(8.W))
+    first_block_metadata := Cat(1.U(1.W), blocks_merged_reg)
+    val default_metadata = Wire(UInt(8.W))
+    default_metadata := Cat(0.U(1.W), frame_num_reg(6, 0))
+
     // Take the data from the register and put it into 10 1024-bit words with metadata at the front.
     for (i <- 0 until 10) {
-        val vecmin = inwords * wordsize - i*(1024-reservebits) - 1 // Leftmost bit index
-        val vecmax = inwords * wordsize - (i+1)*(1024-reservebits) // Rightmost bit index
+        val vecmin = fifo_size * wordsize - i*(1024-reservebits) - 1 // Leftmost bit index
+        val vecmax = fifo_size * wordsize - (i+1)*(1024-reservebits) // Rightmost bit index
         val paddingbits = 1024 - reservebits - (vecmin + 1 - max(vecmax, 0)) // At the end there will not be enough elements to fill an entire 1024-bit word. We need padding bits there.
 
         // Generate the padding as all 1s.
@@ -116,11 +134,13 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         val numberone: BigInt = 1
         padding := ((numberone << paddingbits) - 1).U
 
+        val metadata = if (i == 0) first_block_metadata else default_metadata
+
         // Add the metadata in the beginning, set the first bit to 1 if i==0, and add the data after.
         if (vecmin > 0) {
-            metadata_inserter.io.blocks(i) := Cat(Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
+            metadata_inserter.io.blocks(i) := Cat(Cat(metadata, Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
         } else {
-            metadata_inserter.io.blocks(i) := Cat(Cat((if (i == 0) 1 else 0).U(1.W), frame_num_reg), ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
+            metadata_inserter.io.blocks(i) := Cat(metadata, ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
         }
         io.out(i) := metadata_inserter.io.out(i)
     }

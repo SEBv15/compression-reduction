@@ -52,14 +52,16 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     def check_blocks(blocks: Array[BigInt]) {
         val wlist = blocksToData(blocks, 16)
         // Check the data in the blocks shift-by-shift
-        check_shift(wlist)
+        val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
+        println(nmerged)
+        check_shift(wlist, nmerged.toInt)
     }
 
-    def check_shift(shifti: Array[BigInt]) {
+    def check_shift(shifti: Array[BigInt], nleft: Int) {
         var shift = shifti
         //println("Shift", shift.mkString(" "))
         // Since this function recursively calls itself to go through the shifts in the blocks, check for the base case where there is no data left.
-        if (shift.length == 0 || shift(0) >> 8 == (1 << 8) - 1) {
+        if (shift.length == 0 || nleft == 0) {
             return
         }
 
@@ -86,7 +88,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         datalen += num_header_blocks
         datalen += (4 - (datalen % 4)) % 4
         shift = shift.slice(datalen, shift.length)
-        check_shift(shift)
+        check_shift(shift, nleft-1)
     }
 
     def deshuffle(headers: Array[Int], data: Array[BigInt]) = {
@@ -117,7 +119,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
-            c.io.use_nth.poke(1.U)
+            c.io.data_valid.poke(1.B)
+            c.io.soft_reset.poke(0.B)
 
             val r = new Random(1)
 
@@ -153,11 +156,15 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 var blocks = new ArrayBuffer[BigInt]
                 for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
                     blocks += c.io.blocks(i).peek().litValue
+                    println(c.io.blocks(i).peek().litValue >> (1024-8))
                 }
+                println("-")
 
                 // Reverse the reduction and compression on the data and check against the input from the queue. 
                 // Will fail the test case if the data is different or in the wrong order.
-                check_blocks(blocks.toArray)
+                if (blocks.length > 0) {
+                    check_blocks(blocks.toArray)
+                }
 
                 c.clock.step()
             }

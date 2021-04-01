@@ -15,20 +15,23 @@ import scala.math.max
  *  @param inwords1 Number of elements for the first input vec
  *  @param inwords2 Number of elements for the second input vec
  *  @param minwords1 The minimum number of elements in the first vec
+ *  @param maxoutwords The maximum num of output elements (0 = no limit)
  */
-class Merge(val wordsize:Int = 16, val inwords1:Int = 10, val inwords2:Int = 10, val minwords1:Int = 0) extends Module {
+class Merge(val wordsize:Int = 16, val inwords1:Int = 10, val inwords2:Int = 10, val minwords1:Int = 0, val maxoutwords:Int = 0) extends Module {
     require(wordsize > 0)
     require(inwords1 > 0)
     require(inwords2 > 0)
     require(minwords1 >= 0)
+
+    val outwords = if (maxoutwords > 0) min(inwords1 + inwords2, maxoutwords) else inwords1 + inwords2
 
     val io = IO(new Bundle {
         val len1 = Input(UInt((log2Floor(inwords1) + 1).W))
         val data1 = Input(Vec(inwords1, UInt(wordsize.W)))
         val len2 = Input(UInt((log2Floor(inwords2) + 1).W))
         val data2 = Input(Vec(inwords2, UInt(wordsize.W)))
-        val outlen = Output(UInt((log2Floor(inwords1 + inwords2) + 1).W))
-        val out = Output(Vec(inwords1 + inwords2, UInt(wordsize.W)))
+        val outlen = Output(UInt((log2Floor(outwords) + 1).W))
+        val out = Output(Vec(outwords, UInt(wordsize.W)))
     })
 
     def createMuxLookupList(position: Int) = {
@@ -39,7 +42,7 @@ class Merge(val wordsize:Int = 16, val inwords1:Int = 10, val inwords2:Int = 10,
         lookups
     }
 
-    for (i <- 0 until inwords1 + inwords2) {
+    for (i <- 0 until outwords) {
         io.out(i) := MuxLookup(io.len1, if (i < inwords1) io.data1(i) else io.data2(i-inwords1), createMuxLookupList(i));
     }
 

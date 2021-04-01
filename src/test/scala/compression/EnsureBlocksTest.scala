@@ -17,6 +17,7 @@ import testUtils._
 /** Test the EnsureBlocks module by inputting data and checking if it comes out again in the same order
  *  
  *  @author Sebastian Strempfer
+ *  @todo Make it work again with new metadata
  */
 class EnsureBlocksTest extends FlatSpec with ChiselScalatestTester with Matchers {
     val q = new Queue[BigInt]()
@@ -40,16 +41,19 @@ class EnsureBlocksTest extends FlatSpec with ChiselScalatestTester with Matchers
 
                 if (c.io.write_enable.peek().litValue != 0) {
                     val outl = c.io.blocks_used.peek().litValue
-                    var blocks = new ArrayBuffer[BigInt]()
-                    for (i <- 0 until outl.toInt) {
-                        blocks += c.io.out(i).peek().litValue
-                    }
+                    if (outl > 0) {
+                        var blocks = new ArrayBuffer[BigInt]()
+                        for (i <- 0 until outl.toInt) {
+                            blocks += c.io.out(i).peek().litValue
+                        }
+                        val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
 
-                    val data = blocksToData(blocks.toArray, 64)
+                        val data = blocksToData(blocks.toArray, 64)
 
-                    for (d <- data) {
-                        if (d != (big_one << 64)-1) { // filler words have all 1s set
-                            assert(q.dequeue == d.toInt)
+                        for (d <- data) {
+                            if (d != (big_one << 64)-1) { // filler words have all 1s set
+                                assert(q.dequeue == d.toInt)
+                            }
                         }
                     }
                 }
