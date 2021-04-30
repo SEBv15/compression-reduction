@@ -223,6 +223,10 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             c.clock.step()
             c.clock.step()
             c.io.soft_reset.poke(0.B)
+            c.io.frame_sync.poke(1.B)
+            c.io.data_valid.poke(0.B)
+            c.clock.step()
+            c.io.frame_sync.poke(0.B)
             pendings.clear()
 
             for (i <- 0 until 10) {
@@ -233,18 +237,33 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 c.io.data_valid.poke((!(i == 5 || i == 6)).B)
                 test_pixels(c, data, !(i==5 || i==6))
 
-                // Get the output from the module
-                var blocks = new ArrayBuffer[BigInt]
-                for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
-                    blocks += c.io.blocks(i).peek().litValue
-                    println(c.io.blocks(i).peek().litValue >> (1024-8))
-                }
-                println("-")
+                if (c.io.write_enable.peek().litValue == 1) {
+                    var blocks = new ArrayBuffer[BigInt]
+                    var s : String = ""
+                    val big_one : BigInt = 1
+                    for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
+                        var block = c.io.blocks(i).peek().litValue
+                        blocks += block
+                        println(c.io.blocks(i).peek().litValue >> (1024-8))
+                        for (j <- 0 until 1024) {
+                            if (((block >> (1023 - j)) & 1) == big_one) {
+                                s += "1"
+                            } else {
+                                s += "0"
+                            }
+                        }
+                    }
+                    println("GOT", blocks.length, "blocks")
+                    println("-")
 
-                // Reverse the reduction and compression on the data and check against the input from the queue. 
-                // Will fail the test case if the data is different or in the wrong order.
-                if (blocks.length > 0) {
-                    check_blocks(blocks.toArray)
+                    //println(("BLOCKS AS RECEIVED", s))
+                    //println(("BLOCKS AS RECEIVED", blocks.map(toBinary(_, 1024))))
+
+                    // Reverse the reduction and compression on the data and check against the input from the queue. 
+                    // Will fail the test case if the data is different or in the wrong order.
+                    if (blocks.length > 0) {
+                        check_blocks(blocks.toArray)
+                    }
                 }
 
                 c.clock.step()
