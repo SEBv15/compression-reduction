@@ -6,7 +6,9 @@ import chisel3.util._
 /** Compression.
  *
  *  @author Sebastian Strempfer
- *  @todo Add sync pulse input and set last 4 bits of frame counter to zero when high
+ *  @todo Add sync pulse input and set last 4 bits of frame counter to zero when high - DONE
+ *  @todo soft reset is on for at least several ticks. Reset counters and flush data (don't write)
+ *  @todo set data valid low until first sync pulse - DONE
  *
  *  @param pixel_rows The number of pixel rows
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
@@ -21,29 +23,71 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     val big_one: BigInt = 1
 
     val io = IO(new Bundle {
+        // The raw 10-bit pixel data from a single shift (128x8 pixels).
         val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(10.W))))
+
+        // Tell the module if there is still room to write. If high and data is supposed to be written, it will be dropped. 
+        // Reaction is one tick delayed -> should be set high when there is only room for one write left (or earlier).
         val fifo_full = Input(Bool())
+
+        // When high, the raw input data will be written to the fifo.
         val bypass_compression = Input(Bool())
+
+        // Frame sync should be set high every 16 ticks on the first shift of a new frame. 
+        // It resets the last 4 bits of the shift number to 0 and increases the frame number.
         val frame_sync = Input(Bool())
+
+        // If data valid is low, the data will not be used and not be counted as a shift (the shift number won't increase).
+        // This can be used to artificially lower the framerate by selectively skipping shifts.
         val data_valid = Input(Bool())
+
+        // Soft reset will reset the shift number to zero and make the module wait until the next frame sync before sending data again.
+        // It will also stop the merge module (EnsureBlocks) from accepting new data and flush out what it currently has.
+        // It should take 2 ticks for the module to completely reset.
         val soft_reset = Input(Bool())
+
+        // When compressing, this will be the compressed data from multiple shifts merged together, formatted into 1024-bit words to fit the FIFO.
+        // Otherwise it will be the raw pixel data row by row.
         val blocks = Output(Vec(10, UInt(1024.W)))
+
+        // Number of blocks used (max = 10).
         val blocks_used = Output(UInt(4.W))
+
+        // Whether the data in the blocks output should be written to the FIFO.
+        // This should never be high when the FIFO is full because of the fifo_full input.
         val write_enable = Output(Bool())
+
+        // Whether data was dropped because of a fifo_full
         val data_dropped = Output(Bool())
+
+        val red_len = Output(UInt(10.W))
+        val buf_size = Output(UInt(10.W))
     })
+
+    // Register to store whether the first sync pulse was received and we should start sending data
+    val received_first_sync = RegInit(0.B)
+    when (io.soft_reset) {
+        received_first_sync := 0.B
+    }
+    when (io.frame_sync && ~io.soft_reset) {
+        received_first_sync := 1.B
+    }
 
     // Register which increments every tick
     val shift_num = RegInit(0.U(16.W))
-    when (io.frame_sync) {
-        // On frame sync, extract the frame number (discarding the last 4 shift number bits), increase it by one, and set the shift number to zero.
-        // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
-        shift_num := Cat(shift_num(15, 4) + 1.U, 0.U(4.W))
+    when (io.soft_reset) {
+        shift_num := 0.U
     }.otherwise {
-        when (io.data_valid) {
-            shift_num := shift_num + 1.U
+        when (io.frame_sync) {
+            // On frame sync, extract the frame number (discarding the last 4 shift number bits), increase it by one, and set the shift number to zero.
+            // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
+            shift_num := Cat(shift_num(15, 4) + 1.U, 0.U(4.W))
         }.otherwise {
-            shift_num := shift_num
+            when (io.data_valid && received_first_sync) {
+                shift_num := shift_num + 1.U
+            }.otherwise {
+                shift_num := shift_num
+            }
         }
     }
 
@@ -78,15 +122,19 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
     // Pass the data through our merger / 2 block ensurer
     val block_merger = Module(new EnsureBlocks(pixel_rows/2*(7*16 + 5), 64, 8))
+    block_merger.io.soft_reset := io.soft_reset
     block_merger.io.in := reduced_64
-    // Only use every nth frame
-    when (io.data_valid) {
+    // Only send if the data is valid and we have received the first sync pulse
+    when (io.data_valid && received_first_sync && ~io.soft_reset) {
         block_merger.io.len := (reducer.io.outlen +& 3.U) / 4.U
     }.otherwise {
         block_merger.io.len := 0.U
     }
     block_merger.io.frame_num := shift_num
     block_merger.io.fifo_full := io.fifo_full
+
+    io.red_len := reducer.io.outlen
+    io.buf_size := block_merger.io.buf_size
 
     // Add a pipeline stage at the end
     val data_reg = List.fill(10)(RegInit(((big_one << 1024)-1).U(1024.W)))
@@ -100,7 +148,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
             data_reg(i) := Cat((0 until pixel_rows).map(i => Cat(io.pixels(i))))((10-i)*1024-1, (9-i)*1024)
         }
         blocks_used_reg := 10.U
-        write_enable_reg := ~io.fifo_full
+        write_enable_reg := ~io.fifo_full && ~io.soft_reset
         data_dropped_reg := io.fifo_full
     }.otherwise {
         for (i <- 0 until 10) {

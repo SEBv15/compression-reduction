@@ -23,7 +23,7 @@ class Merger(val wordsize:Int = 16, val inwords1:Int = 10, val inwords2:Int = 10
     val outwords = if (maxoutwords > 0) min(inwords1 + inwords2, maxoutwords) else inwords1 + inwords2
 
     val io = IO(new Bundle {
-        val len1 = Input(UInt((log2Ceil(inwords1) + 1).W))
+        val len1 = Input(UInt((log2Floor(inwords1) + 1).W))
         val data1 = Input(Vec(inwords1, UInt(wordsize.W)))
         val len2 = Input(UInt((log2Floor(inwords2) + 1).W))
         val data2 = Input(Vec(inwords2, UInt(wordsize.W)))

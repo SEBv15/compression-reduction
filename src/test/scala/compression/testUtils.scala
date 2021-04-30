@@ -105,7 +105,8 @@ object testUtils {
      */
     def calculateReductionOutputLength(lengths: Array[Int], maxblocks: Int = 128, elems: Int = 7): Int = {
         val ls = new Array[Int](lengths.length)
-        lengths.copyToArray(ls)
+        //lengths.copyToArray(ls)
+        Array.copy(lengths, 0, ls, 0, lengths.length)
 
         var ms = ls.length / 2
         var m = 1
@@ -118,7 +119,9 @@ object testUtils {
             }
             for (i <- 0 until ms) {
                 ls(i) = ls(2*i) + ls(2*i+1)
-                ls(i) += (m - (ls(i) % m)) % m
+                if (ls(i) % m != 0) {
+                    ls(i) += (m - (ls(i) % m)) % m
+                }
             }
 
             ms /= 2

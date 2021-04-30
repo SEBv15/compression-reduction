@@ -65,7 +65,7 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
     // Merge everything together
     val header_data_merger = Module(new Merger(wordsize, headers_wordsize.size, ncompressors*nwords, 0, 0, true))
     header_data_merger.io.data1 := headers_wordsize
-    header_data_merger.io.len1 := (header_reduction.io.outlength*3.U +& (wordsize-1).U) / wordsize.U
+    header_data_merger.io.len1 := (header_reduction.io.outlength*headerwidth.U +& (wordsize-1).U) / wordsize.U
     header_data_merger.io.data2 := data_reduction.io.out
     header_data_merger.io.len2 := data_reduction.io.outlength
 

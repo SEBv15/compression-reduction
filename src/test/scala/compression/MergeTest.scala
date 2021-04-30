@@ -44,7 +44,13 @@ class MergeTest extends FlatSpec with ChiselScalatestTester with Matchers {
         testwith(10, 5, 0)
     }
     it should "test-merge-asymmetric2" in {
+        testwith(32, 5, 0)
+    }
+    it should "test-merge-asymmetric3" in {
         testwith(5, 10, 0)
+    }
+    it should "test-merge-asymmetric4" in {
+        testwith(5, 32, 0)
     }
     it should "test-merge-symmetric-minwords" in {
         testwith(10, 10, 5)
