@@ -2,6 +2,8 @@ package compression
 
 import org.scalatest._
 import chiseltest._
+import chiseltest.experimental.TestOptionBuilder._
+import chiseltest.internal.VerilatorBackendAnnotation
 import chisel3._
 import chisel3.util.log2Floor
 
@@ -128,7 +130,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     }
 
     it should "test-compression-reduction" in {
-        test(new CompressionReduction) { c =>
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
                     c.io.pixels(i)(j).poke(10.U)
@@ -138,7 +140,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
             c.io.data_valid.poke(0.B)
-            c.io.soft_reset.poke(0.B)
+            c.io.soft_rst.poke(0.B)
 
             c.io.frame_sync.poke(1.B)
             c.clock.step()
@@ -219,10 +221,10 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 c.clock.step()
             }
 
-            c.io.soft_reset.poke(1.B)
+            c.io.soft_rst.poke(1.B)
             c.clock.step()
             c.clock.step()
-            c.io.soft_reset.poke(0.B)
+            c.io.soft_rst.poke(0.B)
             c.io.frame_sync.poke(1.B)
             c.io.data_valid.poke(0.B)
             c.clock.step()

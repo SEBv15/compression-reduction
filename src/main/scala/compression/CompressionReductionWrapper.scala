@@ -18,7 +18,7 @@ class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int =
         val bypass_compression = Input(Bool())
         val frame_sync = Input(Bool())
         val data_valid = Input(Bool())
-        val soft_reset = Input(Bool())
+        val soft_rst = Input(Bool())
         val blocks = Output(Vec(10, UInt(1024.W)))
         val blocks_used = Output(UInt(4.W))
         val write_enable = Output(Bool())
@@ -35,7 +35,7 @@ class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int =
     comp.io.bypass_compression := io.bypass_compression
     comp.io.frame_sync := io.frame_sync
     comp.io.data_valid := io.data_valid
-    comp.io.soft_reset := io.soft_reset
+    comp.io.soft_rst := io.soft_rst
     io.blocks := comp.io.blocks
     io.blocks_used := comp.io.blocks_used
     io.write_enable := comp.io.write_enable

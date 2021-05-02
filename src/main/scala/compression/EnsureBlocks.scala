@@ -27,19 +27,17 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     // Generate default value of all ones
     var defaultval: BigInt = 1
     defaultval = (defaultval << wordsize) - 1
-    
+
     val io = IO(new Bundle {
         val in = Input(Vec(inwords, UInt(wordsize.W)))  // Incoming data
         val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
         val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
-        val soft_reset = Input(Bool())                  // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
+        val soft_rst = Input(Bool())                  // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
         val out = Output(Vec(10, UInt(1024.W)))         // 10 1024-bit output words
         val blocks_used = Output(UInt(4.W))             // How many blocks contain data
         val write_enable = Output(Bool())               // Whether to write the output to the FIFO
         val data_dropped = Output(Bool())               // Flag that turns on when data is dropped and turns off after the next successful write
-
-        val buf_size = Output(UInt((log2Floor(fifo_size)+1).W))
     })
 
 
@@ -50,8 +48,6 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     val frame_num_reg = RegInit(0.U(16.W)) // Keep the frame number of the first frame in the register to output as frame number in the metadata
     val data_dropped_reg = RegInit(0.B)
     val blocks_merged_reg = RegInit(0.U(7.W))
-
-    io.buf_size := len_reg
     
     // Make the value of the data register a vector for easier use later
     val reg_vec = Wire(Vec(fifo_size, UInt(wordsize.W)))
@@ -84,9 +80,9 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     val combinedlen = io.len +& len_reg
     // Decide whether to output the data and clear the register.
-    when (combinedlen > fifo_size.U || io.soft_reset) {
+    when (combinedlen > fifo_size.U || io.soft_rst) {
         merger.io.len1 := 0.U            // Discard the data that was just written to the FIFO
-        io.write_enable := ~io.fifo_full && ~io.soft_reset // Write out the data in the register (or don't if the FIFO say it's full)
+        io.write_enable := ~io.fifo_full && ~io.soft_rst // Write out the data in the register (or don't if the FIFO say it's full)
         frame_num_reg := io.frame_num    // Set the frame num of the next write to the frame number of the new data that is just incoming
         data_dropped_reg := io.fifo_full
         io.data_dropped := io.fifo_full
