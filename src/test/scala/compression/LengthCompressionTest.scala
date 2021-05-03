@@ -21,7 +21,7 @@ class LengthCompressionTest extends FlatSpec with ChiselScalatestTester with Mat
             for (i <- 0 until 10) {
                 c.io.data(i).expect(0.U)
             }
-            println(c.io.header.peek())
+            //println(c.io.header.peek())
 
             // test ones
             for (i <- 0 until 16) {
@@ -31,7 +31,7 @@ class LengthCompressionTest extends FlatSpec with ChiselScalatestTester with Mat
             for (i <- 0 until 10) {
                 c.io.data(i).expect(((1 << 16) - 1).U)
             }
-            println(c.io.header.peek())            
+            //println(c.io.header.peek())            
 
             // test weird 1
             for (i <- 0 until 16) {
@@ -45,7 +45,7 @@ class LengthCompressionTest extends FlatSpec with ChiselScalatestTester with Mat
                     c.io.data(i).expect(((1 << 16) - 1).U)
                 }
             }
-            println(c.io.header.peek())          
+            //println(c.io.header.peek())          
 
             // test weird 2
             for (i <- 0 until 16) {
@@ -59,7 +59,7 @@ class LengthCompressionTest extends FlatSpec with ChiselScalatestTester with Mat
                     c.io.data(i).expect(0.U)
                 }
             }
-            println(c.io.header.peek())             
+            //println(c.io.header.peek())             
         }
     }
 }

@@ -187,8 +187,6 @@ object testUtils {
             }
         }
 
-        println(stage_lengths)
-
         // Create an array with room for the unreduced data
         var out: Array[BigInt] = Array.fill(n*elems)(0)
         for (i <- 0 until min(n*elems, data.length)) {

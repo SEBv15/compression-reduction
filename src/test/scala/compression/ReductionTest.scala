@@ -2,6 +2,8 @@ package compression
 
 import org.scalatest._
 import chiseltest._
+import chiseltest.experimental.TestOptionBuilder._
+import chiseltest.internal.VerilatorBackendAnnotation
 import chisel3._
 
 import scala.collection.mutable.ArrayBuffer
@@ -20,7 +22,7 @@ class ReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
     val maxblocks = 128
 
     it should "test reduction random" taggedAs UnitTestTag in {
-        test(new Reduction(ninputs, nelems, elemwidth, maxblocks, true)) { c =>
+        test(new Reduction(ninputs, nelems, elemwidth, maxblocks, true)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.
             val maxval = (1 << elemwidth) - 1
 

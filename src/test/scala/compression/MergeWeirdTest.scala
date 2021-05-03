@@ -21,7 +21,7 @@ class MergeWeirdTest extends FlatSpec with ChiselScalatestTester with Matchers {
             }
             for (len1 <- minwords1 to inwords1) {
                 for (len2 <- minwords2 to inwords2) {
-                    println(len1.toString + ", " + len2.toString)
+                    // println(len1.toString + ", " + len2.toString)
                     val l1 = List.range(1, len1+1)
                     val l2 = List.range(1+10, len2+1+10)
                     val pivot = if (len1 + len2 > inwords1) len1 + len2 - inwords1 else 0
