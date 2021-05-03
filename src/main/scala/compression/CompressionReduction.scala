@@ -6,9 +6,6 @@ import chisel3.util._
 /** Compression.
  *
  *  @author Sebastian Strempfer
- *  @todo Add sync pulse input and set last 4 bits of frame counter to zero when high - DONE
- *  @todo soft reset is on for at least several ticks. Reset counters and flush data (don't write)
- *  @todo set data valid low until first sync pulse - DONE
  *
  *  @param pixel_rows The number of pixel rows
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
