@@ -9,7 +9,7 @@ import chisel3._
  *  @author Sebastian Strempfer
  */
 class LengthCompressionTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    it should "test-length-compress" in {
+    it should "test-length-compress" taggedAs UnitTestTag in {
         // test case body here
         test(new LengthCompress) { c =>
         // test body here

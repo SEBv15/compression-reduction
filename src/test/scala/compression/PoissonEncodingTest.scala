@@ -14,7 +14,7 @@ import testUtils._
  *  @author Sebastian Strempfer
  */
 class PoissonEncodingTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    it should "test-poisson-encoding" in {
+    it should "test-poisson-encoding" taggedAs UnitTestTag in {
         // test case body here
         test(new PoissonEncoding()) { c =>
             for (i <- 0 until 1 << 10) {

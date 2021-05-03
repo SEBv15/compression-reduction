@@ -8,6 +8,9 @@ import scala.collection.mutable.ListBuffer
 import scala.math.max
 import scala.math.min
 
+import org.scalatest.Tag
+object UnitTestTag extends Tag("unitTest")
+
 object testUtils {
     /** Reverse poisson encoding as much as that is possible. 
      *  To get the returned value as close as possible to the original, add half the divisor to the output so its in center of the range of values that would lead to it.
@@ -34,6 +37,26 @@ object testUtils {
         if (enc < 52)
             return ((enc-20) << 3) + 4
         return ((enc-36) << 4) + 8
+    }
+
+    /** Takes in compression headers and an array of compression module outputs as 16-bit UInts and turns them into a 2D array of pixels.
+     *  
+     *  @author Sebastian Strempfer
+     * 
+     *  @param headers Headers like they come out of a single compression module
+     *  @param data 2D compression output vector flattened to a 1D array
+     *  @return 2D array of poisson encoded pixels (128x8)
+     */
+    def deshuffle(headers: Array[Int], data: Array[BigInt]) = {
+        var deshuffled = Array.fill(128)(Array.fill(8)(0))
+        for (i <- 0 until 64) {
+            for (j <- 0 until 16) {
+                for (k <- 0 until headers(i)) {
+                    deshuffled(i/2*4 + j/4)(j % 4 + 4*(i%2)) += (((data(7*i + k) >> j) & 1) << k).toInt
+                }
+            }
+        }
+        deshuffled
     }
 
     /** Concatenate an array like chisel would if it were a Vec
@@ -111,7 +134,7 @@ object testUtils {
         var ms = ls.length / 2
         var m = 1
         var l = elems
-        while (ms >= 1) {
+        while (ms >= 2) {
             l *= 2
             if (l > maxblocks) {
                 l /= 2
@@ -126,7 +149,7 @@ object testUtils {
 
             ms /= 2
         }
-        return ls(0)
+        return ls(0)+ls(1)
     }
 
     /** Reverse the operation done by a single weird reduction stage
@@ -163,6 +186,8 @@ object testUtils {
                 }
             }
         }
+
+        println(stage_lengths)
 
         // Create an array with room for the unreduced data
         var out: Array[BigInt] = Array.fill(n*elems)(0)

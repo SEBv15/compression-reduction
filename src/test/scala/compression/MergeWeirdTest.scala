@@ -41,19 +41,22 @@ class MergeWeirdTest extends FlatSpec with ChiselScalatestTester with Matchers {
             }
         }
     }
-    it should "test-mergeweird-symmetric" in {
+    it should "test-mergeweird-symmetric" taggedAs UnitTestTag in {
         testwith(10, 10, 0, 0)
     }
-    it should "test-mergeweird-asymmetric1" in {
+    it should "test-mergeweird-asymmetric1" taggedAs UnitTestTag in {
         testwith(10, 5, 0, 0)
     }
-    it should "test-mergeweird-asymmetric2" in {
+    it should "test-mergeweird-asymmetric2" taggedAs UnitTestTag in {
         testwith(5, 10, 0, 0)
     }
-    it should "test-mergeweird-symmetric-minwords1" in {
+    it should "test-mergeweird-asymmetric3" taggedAs UnitTestTag in {
+        testwith(5, 30, 0, 0)
+    }
+    it should "test-mergeweird-symmetric-minwords1" taggedAs UnitTestTag in {
         testwith(10, 10, 5, 0)
     }
-    it should "test-mergeweird-symmetric-minwords2" in {
+    it should "test-mergeweird-symmetric-minwords2" taggedAs UnitTestTag in {
         testwith(10, 10, 0, 5)
     }
 }
