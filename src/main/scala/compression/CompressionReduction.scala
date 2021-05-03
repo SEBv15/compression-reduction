@@ -139,7 +139,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     // Implement the bypass feature
     when (io.bypass_compression) {
         for (i <- 0 until 10) {
-            data_reg(i) := Cat((0 until pixel_rows).map(i => Cat(io.pixels(i))))((10-i)*1024-1, (9-i)*1024)
+            data_reg(i) := Cat((0 until pixel_rows).map(j => Cat(io.pixels(j))))((10-i)*1024-1, (9-i)*1024)
         }
         blocks_used_reg := 10.U
         write_enable_reg := ~io.fifo_full && ~io.soft_rst
