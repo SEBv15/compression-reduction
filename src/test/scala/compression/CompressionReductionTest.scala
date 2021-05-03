@@ -21,7 +21,7 @@ import testUtils._
 
 /** Test the whole compression & reduction stage by giving it data and checking if what comes out is the same as what we inserted
  *  This doesn't test any metadata or how the shifts are merged. Just if the pixels are correct.
- *  THIS IS VERY SLOW!
+ *  THIS IS VERY SLOW TO COMPILE (~3 minutes for every test)!
  *
  *  @author Sebastian Strempfer
  */
@@ -54,7 +54,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
      *  The valid parameter signals whether the data is valid and should therefore be added to the queue to check the output with
      */
     def test_pixels(c: CompressionReduction, pixels: Array[Array[Int]], valid: Boolean = true) = {
-        println(("INSERTED",  pixels.map(_.mkString).mkString(" ")))
+        //println(("INSERTED",  pixels.map(_.mkString).mkString(" ")))
         for (i <- 0 until 128) {
             for (j <- 0 until 8) {
                 c.io.data_valid.poke(valid.B)
@@ -77,6 +77,10 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 blocks += block
             }
         }
+        if (blocks.length > 0) {
+            val numshifts = (blocks(0) >> (1024-8)) & ((1 << 7)-1)
+            println("Received " + numshifts.toString() + " shift" + (if (numshifts == 1) "" else "s"))
+        }
         blocks.toArray
     }
 
@@ -90,7 +94,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         //println(("BLOCKS AS RECEIVED 2", wlist.mkString(" ")))
         // Check the data in the blocks shift-by-shift
         val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
-        println(nmerged)
+        //println(nmerged)
         check_shift(wlist, nmerged.toInt)
     }
 
@@ -106,7 +110,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
         // Reverse the entire reduction and compression for the first shift in the data from the blocks
         val (headers, num_3bits) = getHeaders(shift)
-        println("HEADERS", headers.mkString(" "), num_3bits)
+        //println("HEADERS", headers.mkString(" "), num_3bits)
 
         var datalen = calculateReductionOutputLength(headers, 128, 7)
         //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
@@ -140,7 +144,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     def compare_data(pixels: Array[Array[Int]]) {
         num_shifts_received += 1
         //println("Checking shift", num_shifts_received)
-        println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
+        //println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
         var flag: Boolean = true
         for (i <- 0 until 128) {
             for (j <- 0 until 8) {
@@ -149,11 +153,11 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 if (!(penc == pixels(i)(j))) flag = false
             }
         }
-        println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
+        //println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
         pending_shifts -= 1
     }
 
-    it should "test compression reduction with random data" in {
+    it should "test with random data" in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
@@ -176,7 +180,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             for (i <- 0 until 15) {
                 // Get random pixels
-                var data = generate_pixels(r)
+                val data = generate_pixels(r)
                 // for (j <- 0 until 128) {
                 //     for (k <- 0 until 8) {
                 //         data(j)(k) = i+1
@@ -194,6 +198,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 c.clock.step()
             }
 
+            println("Soft Reset")
             // soft reset
             c.io.soft_rst.poke(1.B)
             c.clock.step()
@@ -207,12 +212,10 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             c.clock.step()
             c.io.frame_sync.poke(0.B)
 
-            for (i <- 0 until 10) {
-                // Get random pixels
-                var data = generate_pixels(r)
+            for (i <- 0 until 100) {
+                val data = generate_pixels(r)
 
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                val valid = !(i == 5 || i == 6)
+                val valid = r.nextInt(5) == 0
                 test_pixels(c, data, valid)
 
                 val blocks = get_blocks(c)
@@ -223,12 +226,12 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test compression reduction with half 1 half 0" in {
+    it should "test with all zeros" in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
-                    c.io.pixels(i)(j).poke(10.U)
+                    c.io.pixels(i)(j).poke(0.U)
                 }
             }
             c.io.fifo_full.poke(0.B)
@@ -245,22 +248,12 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
-            for (i <- 0 until 30) {
+            for (i <- 0 until 80) {
                 // Get random pixels
-                var data = generate_pixels(r)
-                for (i <- 0 until 128) {
-                    for (j <- 0 until 8) {
-                        if (i < 64) {
-                            data(i)(j) = 1
-                        } else {
-                            data(i)(j) = 0
-                        }
-                    }
-                }
-                val valid = true
+                val data = Array.fill(128)(Array.fill(8)(0))
 
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, valid)
+                test_pixels(c, data, true)
 
                 // Get the output from the module
                 val blocks = get_blocks(c)
@@ -271,12 +264,12 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test compression reduction with half 1 half 0 horizontal" in {
+    it should "test with all ones" in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
-                    c.io.pixels(i)(j).poke(10.U)
+                    c.io.pixels(i)(j).poke(0.U)
                 }
             }
             c.io.fifo_full.poke(0.B)
@@ -293,66 +286,12 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
-            for (i <- 0 until 30) {
+            for (i <- 0 until 20) {
                 // Get random pixels
-                var data = generate_pixels(r)
-                for (i <- 0 until 128) {
-                    for (j <- 0 until 8) {
-                        if (j < 4) {
-                            data(i)(j) = 1
-                        } else {
-                            data(i)(j) = 0
-                        }
-                    }
-                }
-                val valid = true
+                val data = Array.fill(128)(Array.fill(8)((1 << 16) - 1))
 
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, valid)
-
-                // Get the output from the module
-                val blocks = get_blocks(c)
-                check_blocks(blocks)
-
-                c.clock.step()
-            }
-        }
-    }
-    it should "test compression reduction with half 1 half 0 random" in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            pendings.clear()
-            for (i <- 0 until 128) {
-                for (j <- 0 until 8) {
-                    c.io.pixels(i)(j).poke(10.U)
-                }
-            }
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(0.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
-
-            c.io.frame_sync.poke(1.B)
-            c.clock.step()
-            c.io.frame_sync.poke(0.B)
-
-            c.io.data_valid.poke(1.B)
-
-            val r = new Random(1)
-
-            for (i <- 0 until 30) {
-                // Get random pixels
-                var data = generate_pixels(r)
-                for (i <- 0 until 128) {
-                    val v = r.nextInt(2)
-                    for (j <- 0 until 8) {
-                        data(i)(j) = r.nextInt(v+1)
-                    }
-                }
-                val valid = true
-
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, valid)
+                test_pixels(c, data, true)
 
                 // Get the output from the module
                 val blocks = get_blocks(c)
