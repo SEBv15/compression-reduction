@@ -33,7 +33,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
         val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
-        val soft_rst = Input(Bool())                  // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
+        val soft_rst = Input(Bool())                    // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
         val out = Output(Vec(10, UInt(1024.W)))         // 10 1024-bit output words
         val blocks_used = Output(UInt(4.W))             // How many blocks contain data
         val write_enable = Output(Bool())               // Whether to write the output to the FIFO
@@ -58,7 +58,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     // --------- MERGE MODULE ----------------------
 
     // Merger to merge the old data with the new
-    val merger = Module(new Merger(wordsize, fifo_size, inwords, 0, 0, false, 0)) // Could possibly be optimized, but this works
+    val merger = Module(new Merger(wordsize, fifo_size, inwords, 0, 0, false, fifo_size)) // Could possibly be optimized, but this works
 
     // Connect the merger output to the registers
     for (i <- 0 until fifo_size) {
@@ -116,7 +116,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     // --------- FORMAT REGISTER DATA FOR FIFO ----
 
-    val metadata_inserter = Module(new InsertEndMetadata(inbits, wordsize, reservebits, 16))
+    val metadata_inserter = Module(new InsertEndMetadata(1024*10, wordsize, reservebits, 16))
     metadata_inserter.io.len := len_reg
     metadata_inserter.io.metadata := frame_num_reg
 
@@ -139,17 +139,17 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         val metadata = if (i == 0) first_block_metadata else default_metadata
 
         // Add the metadata in the beginning, set the first bit to 1 if i==0, and add the data after.
-        if (vecmin > 0) {
-            io.out(i) := Cat(Cat(metadata, Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
-        } else {
-            io.out(i) := Cat(metadata, ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
-        }
+        // if (vecmin > 0) {
+        //     io.out(i) := Cat(Cat(metadata, Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
+        // } else {
+        //     io.out(i) := Cat(metadata, ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
+        // }
         if (vecmin > 0) {
             metadata_inserter.io.blocks(i) := Cat(Cat(metadata, Cat(reg_vec)(vecmin, max(vecmax, 0))), padding)
         } else {
             metadata_inserter.io.blocks(i) := Cat(metadata, ((numberone << 1024-reservebits)-1).U((1024-reservebits).W))
         }
-        // io.out(i) := metadata_inserter.io.out(i)
+        io.out(i) := metadata_inserter.io.out(i)
     }
 
     // Calculate the number of blocks used by ceil dividing by elems-per-block. Also, can't have just 1 block. In that case we just send a completely empty block (very rare)

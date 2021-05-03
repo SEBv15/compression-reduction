@@ -12,7 +12,7 @@ import chisel3.util._
  *  @param reservedbits How many bits in the beginning are reserved
  *  @param len width of the metadata to be inserted
  */
-class InsertEndMetadata(val inbits: Int = 64*(10*7+5), val wordsize: Int = 64, val reservedbits:Int = 8, val metadatawidth:Int = 16) extends Module {
+class InsertEndMetadata(val inbits: Int = 1024*10, val wordsize: Int = 64, val reservedbits:Int = 8, val metadatawidth:Int = 16) extends Module {
     val inwords = (inbits + wordsize-1)/wordsize
 
     val io = IO(new Bundle {

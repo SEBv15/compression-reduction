@@ -80,7 +80,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
             // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
             shift_num := Cat(shift_num(15, 4) + 1.U, 0.U(4.W))
         }.otherwise {
-            when (io.data_valid && received_first_sync) {
+            when (io.data_valid && (received_first_sync || io.frame_sync)) {
                 shift_num := shift_num + 1.U
             }.otherwise {
                 shift_num := shift_num
@@ -122,7 +122,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     block_merger.io.soft_rst := io.soft_rst
     block_merger.io.in := reduced_64
     // Only send if the data is valid and we have received the first sync pulse
-    when (io.data_valid && received_first_sync && ~io.soft_rst) {
+    when (io.data_valid && (received_first_sync || io.frame_sync) && ~io.soft_rst) {
         block_merger.io.len := (reducer.io.outlen +& 3.U) / 4.U
     }.otherwise {
         block_merger.io.len := 0.U

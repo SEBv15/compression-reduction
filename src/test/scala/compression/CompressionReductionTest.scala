@@ -26,26 +26,40 @@ import testUtils._
  *  @author Sebastian Strempfer
  */
 class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    var pendings = new Queue[Int]
-    var pending_shifts = 0
-    var num_shifts_received = 0
+    var pendings = new Queue[Int] // queue holds inserted pixels in row-major order
+    var pending_shifts = 0 // how many shifts are still in the queue (still buffering in the ensureblocks module or pipeline)
+    var num_shifts_received = 0 // Number of shifts that have been processed out of the compression block
 
+    /** Generates a frames worth of random pixels
+     *
+     *  Each frame is capped at a random number of bits so we see more variety in compression efficiency. 
+     *  Also each 16-pixel block is capped by another random number of bits.
+     */
     def generate_pixels(r: Random) = {
-        var data = ArrayBuffer.fill(128)(ArrayBuffer.fill(8)(0))
-        for (i <- 0 until 128) {
-            val numbits = r.nextInt(11) // just so we have a better chance of getting lower numbers
-            for (j <- 0 until 8) {
-                data(i)(j) = r.nextInt(1 << numbits)
+        var data = Array.fill(128)(Array.fill(8)(0))
+        val framebits = r.nextInt(11)
+        for (i <- 0 until 128 by 2) {
+            val numbits = r.nextInt(framebits+1)
+            for (j <- 0 until 2) {
+                for (k <- 0 until 8) {
+                    data(i+j)(k) = r.nextInt(1 << numbits)
+                }
             }
         }
         data
     }
 
-    def test_pixels(c: CompressionReduction, pixels: ArrayBuffer[ArrayBuffer[Int]], enqueue: Boolean = true) = {
+    /** Inserts an array of pixels into the compression module
+     *
+     *  The valid parameter signals whether the data is valid and should therefore be added to the queue to check the output with
+     */
+    def test_pixels(c: CompressionReduction, pixels: Array[Array[Int]], valid: Boolean = true) = {
+        println(("INSERTED",  pixels.map(_.mkString).mkString(" ")))
         for (i <- 0 until 128) {
             for (j <- 0 until 8) {
+                c.io.data_valid.poke(valid.B)
                 c.io.pixels(i)(j).poke(pixels(i)(j).U)
-                if (enqueue) {
+                if (valid) {
                     pendings.enqueue(pixels(i)(j))
                 }
             }
@@ -53,7 +67,25 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         pending_shifts += 1
     }
 
+    /** Reads the blocks from the compression module and returns them as an array of bigints
+     */
+    def get_blocks(c: CompressionReduction) = {
+        var blocks = new ArrayBuffer[BigInt]
+        if (c.io.write_enable.peek().litValue == 1) {
+            for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
+                var block = c.io.blocks(i).peek().litValue
+                blocks += block
+            }
+        }
+        blocks.toArray
+    }
+
+    /** Takes in the module output, reverses the entire compression (except for poisson encoding) and compares them to what is in the queue of inserted pixels.
+     *
+     *  This method doesn't have access to the compression module so if it can reverse the output to get back the original, it is guaranteed that the compression module output is usable.
+     */
     def check_blocks(blocks: Array[BigInt]) {
+        if (blocks.length == 0) return;
         val wlist = blocksToData(blocks, 16)
         //println(("BLOCKS AS RECEIVED 2", wlist.mkString(" ")))
         // Check the data in the blocks shift-by-shift
@@ -62,6 +94,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         check_shift(wlist, nmerged.toInt)
     }
 
+    /** Reverses the first compressed frame it finds and checks it against the input. Remaining data gets passed back to the function.
+     */
     def check_shift(shifti: Array[BigInt], nleft: Int) {
         var shift = shifti
         //println("Shift", shift.mkString(" "))
@@ -72,7 +106,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
         // Reverse the entire reduction and compression for the first shift in the data from the blocks
         val (headers, num_3bits) = getHeaders(shift)
-        //println("HEADERS", headers.mkString(" "), num_3bits)
+        println("HEADERS", headers.mkString(" "), num_3bits)
 
         var datalen = calculateReductionOutputLength(headers, 128, 7)
         //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
@@ -101,18 +135,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         check_shift(shift, nleft-1)
     }
 
-    def deshuffle(headers: Array[Int], data: Array[BigInt]) = {
-        var deshuffled = Array.fill(128)(Array.fill(8)(0))
-        for (i <- 0 until 64) {
-            for (j <- 0 until 16) {
-                for (k <- 0 until headers(i)) {
-                    deshuffled(i/2*4 + j/4)(j % 4 + 4*(i%2)) += (((data(7*i + k) >> j) & 1) << k).toInt
-                }
-            }
-        }
-        deshuffled
-    }
-
+    /** Takes in the reversed pixels and compares them against what is in the queue
+     */
     def compare_data(pixels: Array[Array[Int]]) {
         num_shifts_received += 1
         //println("Checking shift", num_shifts_received)
@@ -129,7 +153,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         pending_shifts -= 1
     }
 
-    it should "test-compression-reduction" in {
+    it should "test compression reduction with random data" in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
@@ -153,120 +177,186 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             for (i <- 0 until 15) {
                 // Get random pixels
                 var data = generate_pixels(r)
-                for (j <- 0 until 128) {
-                    for (k <- 0 until 8) {
-                        data(j)(k) = i+1
-                    }
-                }
+                // for (j <- 0 until 128) {
+                //     for (k <- 0 until 8) {
+                //         data(j)(k) = i+1
+                //     }
+                // }
+                val valid = i != 5 // skip the fifth frame to test data_valid
+
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                val valid = i != 5
-                c.io.data_valid.poke(valid.B)
-                //println("Datavalid", valid)
-                // if (!pendings.isEmpty)
-                //     println(pendings.last)
                 test_pixels(c, data, valid)
-                // if (!pendings.isEmpty)
-                //     println(pendings.last)
-
-                //println("Inserted", data)
-
-                /*val headers = Array.fill(64)(0)
-                for (i <- 0 until 64) {
-                    var max = 0
-                    for (j <- 0 until 4) {
-                        for (k <- 0 until 4) {
-                            if (data(i/2*4+j)(k+4*(i % 2)) > max) {
-                                max = data(i/2*4+j)(k+4*(i % 2))
-                            }
-                        }
-                    }
-                    if (max > 0)
-                        headers(i) = log2Floor(poissonEncode(max)) + 1
-                }
-                println("Headers", headers.mkString(" ")) */
-
-                //println(("REDUCER LEN", c.io.red_len.peek().litValue))
-                //println(("BUF SIZE", c.io.buf_size.peek().litValue))
 
                 // Get the output from the module
-                if (c.io.write_enable.peek().litValue == 1) {
-                    var blocks = new ArrayBuffer[BigInt]
-                    var s : String = ""
-                    val big_one : BigInt = 1
-                    for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
-                        var block = c.io.blocks(i).peek().litValue
-                        blocks += block
-                        println(c.io.blocks(i).peek().litValue >> (1024-8))
-                        for (j <- 0 until 1024) {
-                            if (((block >> (1023 - j)) & 1) == big_one) {
-                                s += "1"
-                            } else {
-                                s += "0"
-                            }
-                        }
-                    }
-                    println("GOT", blocks.length, "blocks")
-                    println("-")
-
-                    //println(("BLOCKS AS RECEIVED", s))
-                    //println(("BLOCKS AS RECEIVED", blocks.map(toBinary(_, 1024))))
-
-                    // Reverse the reduction and compression on the data and check against the input from the queue. 
-                    // Will fail the test case if the data is different or in the wrong order.
-                    if (blocks.length > 0) {
-                        check_blocks(blocks.toArray)
-                    }
-                }
+                val blocks = get_blocks(c)
+                check_blocks(blocks)
 
                 c.clock.step()
             }
 
+            // soft reset
             c.io.soft_rst.poke(1.B)
             c.clock.step()
             c.clock.step()
             c.io.soft_rst.poke(0.B)
+            pendings.clear()
+
+            // frame sync
             c.io.frame_sync.poke(1.B)
             c.io.data_valid.poke(0.B)
             c.clock.step()
             c.io.frame_sync.poke(0.B)
-            pendings.clear()
 
             for (i <- 0 until 10) {
                 // Get random pixels
                 var data = generate_pixels(r)
 
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                c.io.data_valid.poke((!(i == 5 || i == 6)).B)
-                test_pixels(c, data, !(i==5 || i==6))
+                val valid = !(i == 5 || i == 6)
+                test_pixels(c, data, valid)
 
-                if (c.io.write_enable.peek().litValue == 1) {
-                    var blocks = new ArrayBuffer[BigInt]
-                    var s : String = ""
-                    val big_one : BigInt = 1
-                    for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
-                        var block = c.io.blocks(i).peek().litValue
-                        blocks += block
-                        println(c.io.blocks(i).peek().litValue >> (1024-8))
-                        for (j <- 0 until 1024) {
-                            if (((block >> (1023 - j)) & 1) == big_one) {
-                                s += "1"
-                            } else {
-                                s += "0"
-                            }
+                val blocks = get_blocks(c)
+                check_blocks(blocks)
+
+                c.clock.step()
+            }
+        }
+    }
+
+    it should "test compression reduction with half 1 half 0" in {
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            pendings.clear()
+            for (i <- 0 until 128) {
+                for (j <- 0 until 8) {
+                    c.io.pixels(i)(j).poke(10.U)
+                }
+            }
+            c.io.fifo_full.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+
+            c.io.frame_sync.poke(1.B)
+            c.clock.step()
+            c.io.frame_sync.poke(0.B)
+
+            c.io.data_valid.poke(1.B)
+
+            val r = new Random(1)
+
+            for (i <- 0 until 30) {
+                // Get random pixels
+                var data = generate_pixels(r)
+                for (i <- 0 until 128) {
+                    for (j <- 0 until 8) {
+                        if (i < 64) {
+                            data(i)(j) = 1
+                        } else {
+                            data(i)(j) = 0
                         }
                     }
-                    println("GOT", blocks.length, "blocks")
-                    println("-")
+                }
+                val valid = true
 
-                    //println(("BLOCKS AS RECEIVED", s))
-                    //println(("BLOCKS AS RECEIVED", blocks.map(toBinary(_, 1024))))
+                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
+                test_pixels(c, data, valid)
 
-                    // Reverse the reduction and compression on the data and check against the input from the queue. 
-                    // Will fail the test case if the data is different or in the wrong order.
-                    if (blocks.length > 0) {
-                        check_blocks(blocks.toArray)
+                // Get the output from the module
+                val blocks = get_blocks(c)
+                check_blocks(blocks)
+
+                c.clock.step()
+            }
+        }
+    }
+
+    it should "test compression reduction with half 1 half 0 horizontal" in {
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            pendings.clear()
+            for (i <- 0 until 128) {
+                for (j <- 0 until 8) {
+                    c.io.pixels(i)(j).poke(10.U)
+                }
+            }
+            c.io.fifo_full.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+
+            c.io.frame_sync.poke(1.B)
+            c.clock.step()
+            c.io.frame_sync.poke(0.B)
+
+            c.io.data_valid.poke(1.B)
+
+            val r = new Random(1)
+
+            for (i <- 0 until 30) {
+                // Get random pixels
+                var data = generate_pixels(r)
+                for (i <- 0 until 128) {
+                    for (j <- 0 until 8) {
+                        if (j < 4) {
+                            data(i)(j) = 1
+                        } else {
+                            data(i)(j) = 0
+                        }
                     }
                 }
+                val valid = true
+
+                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
+                test_pixels(c, data, valid)
+
+                // Get the output from the module
+                val blocks = get_blocks(c)
+                check_blocks(blocks)
+
+                c.clock.step()
+            }
+        }
+    }
+    it should "test compression reduction with half 1 half 0 random" in {
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            pendings.clear()
+            for (i <- 0 until 128) {
+                for (j <- 0 until 8) {
+                    c.io.pixels(i)(j).poke(10.U)
+                }
+            }
+            c.io.fifo_full.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+
+            c.io.frame_sync.poke(1.B)
+            c.clock.step()
+            c.io.frame_sync.poke(0.B)
+
+            c.io.data_valid.poke(1.B)
+
+            val r = new Random(1)
+
+            for (i <- 0 until 30) {
+                // Get random pixels
+                var data = generate_pixels(r)
+                for (i <- 0 until 128) {
+                    val v = r.nextInt(2)
+                    for (j <- 0 until 8) {
+                        data(i)(j) = r.nextInt(v+1)
+                    }
+                }
+                val valid = true
+
+                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
+                test_pixels(c, data, valid)
+
+                // Get the output from the module
+                val blocks = get_blocks(c)
+                check_blocks(blocks)
 
                 c.clock.step()
             }
