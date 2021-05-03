@@ -69,7 +69,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
     /** Reads the blocks from the compression module and returns them as an array of bigints
      */
-    def get_blocks(c: CompressionReduction) = {
+    def get_blocks(c: CompressionReduction, print: Boolean = true) = {
         var blocks = new ArrayBuffer[BigInt]
         if (c.io.write_enable.peek().litValue == 1) {
             for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
@@ -77,7 +77,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 blocks += block
             }
         }
-        if (blocks.length > 0) {
+        if (blocks.length > 0 && print) {
             val numshifts = (blocks(0) >> (1024-8)) & ((1 << 7)-1)
             println("Received " + numshifts.toString() + " shift" + (if (numshifts == 1) "" else "s"))
         }
@@ -215,7 +215,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             for (i <- 0 until 100) {
                 val data = generate_pixels(r)
 
-                val valid = r.nextInt(5) == 0
+                val valid = r.nextInt(5) != 0
                 test_pixels(c, data, valid)
 
                 val blocks = get_blocks(c)
@@ -248,7 +248,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
-            for (i <- 0 until 80) {
+            for (i <- 0 until 160) {
                 // Get random pixels
                 val data = Array.fill(128)(Array.fill(8)(0))
 
@@ -288,7 +288,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             for (i <- 0 until 20) {
                 // Get random pixels
-                val data = Array.fill(128)(Array.fill(8)((1 << 16) - 1))
+                val data = Array.fill(128)(Array.fill(8)((1 << 10) - 1))
 
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
                 test_pixels(c, data, true)
@@ -298,6 +298,50 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 check_blocks(blocks)
 
                 c.clock.step()
+            }
+        }
+    }
+
+    it should "test compression bypass" in {
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            pendings.clear()
+
+            c.io.fifo_full.poke(0.B)
+            c.io.bypass_compression.poke(1.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+
+            val r = new Random(1)
+
+            for (i <- 0 until 20) {
+                // Get random pixels
+                val pixels = generate_pixels(r)
+
+                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
+                test_pixels(c, pixels, true)
+
+                // fifo full signal really only affects the write enable and data dropped output
+                val fifofull = (i % 4) == 0
+                c.io.fifo_full.poke(fifofull.B)
+
+                c.clock.step()
+
+                c.io.blocks_used.expect(10.U)
+                c.io.write_enable.expect((!fifofull).B)
+                c.io.data_dropped.expect(fifofull.B)
+
+                // Get the output from the module
+                var data: BigInt = 0
+                for (i <- 0 until 10) {
+                    data <<= 1024
+                    data += c.io.blocks(i).peek().litValue
+                }
+                val pixelso = Array.fill(128)(Array.fill(8)(0))
+                for (i <- 0 until 128*8) {
+                    pixelso(i / 8)(i % 8) = ((data >> (10*(128*8 - 1 - i))) & ((1 << 10) - 1)).intValue()
+                    assert(pendings.dequeue == pixelso(i / 8)(i % 8))
+                }
             }
         }
     }
