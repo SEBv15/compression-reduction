@@ -18,10 +18,11 @@ jobs:
       with:
         java-version: '11'
         distribution: 'adopt'
-    - name: Set up g++
+    - name: Set up g++ and verilator
       run: |
            sudo apt update
            sudo apt install gcc-10 g++-10
+           sudo apt-get install verilator
       shell: bash
     - name: Run tests
       run: sbt 'testOnly compression.CompressionReductionTest --'
