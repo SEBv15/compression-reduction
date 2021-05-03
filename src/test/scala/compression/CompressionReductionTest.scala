@@ -88,19 +88,19 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
      *
      *  This method doesn't have access to the compression module so if it can reverse the output to get back the original, it is guaranteed that the compression module output is usable.
      */
-    def check_blocks(blocks: Array[BigInt]) {
+    def check_blocks(blocks: Array[BigInt], data_dropped: Boolean = false) {
         if (blocks.length == 0) return;
         val wlist = blocksToData(blocks, 16)
         //println(("BLOCKS AS RECEIVED 2", wlist.mkString(" ")))
         // Check the data in the blocks shift-by-shift
         val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
         //println(nmerged)
-        check_shift(wlist, nmerged.toInt)
+        check_shift(wlist, nmerged.toInt, data_dropped)
     }
 
     /** Reverses the first compressed frame it finds and checks it against the input. Remaining data gets passed back to the function.
      */
-    def check_shift(shifti: Array[BigInt], nleft: Int) {
+    def check_shift(shifti: Array[BigInt], nleft: Int, data_dropped: Boolean) {
         var shift = shifti
         //println("Shift", shift.mkString(" "))
         // Since this function recursively calls itself to go through the shifts in the blocks, check for the base case where there is no data left.
@@ -129,32 +129,56 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         //println("Pixels", (0 until pixels.length).map(i => pixels(i).mkString(" ")))
 
         // Check against what we have in the queue
-        compare_data(pixels)
+        compare_data(pixels, data_dropped)
 
         // Do the same for the set of data after this one
         val num_header_blocks = 8 + (num_3bits*3 + 15)/16
         datalen += num_header_blocks
         datalen += (4 - (datalen % 4)) % 4
         shift = shift.slice(((datalen + 3)/4)*4, shift.length)
-        check_shift(shift, nleft-1)
+        check_shift(shift, nleft-1, data_dropped)
     }
 
-    /** Takes in the reversed pixels and compares them against what is in the queue
+    /** Takes in the reversed pixels and compares them against what is in the queue.
+     * 
+     *  If search is true, it will look through the frames in the pendings queue until it finds one that matches or runs out of frames (which will throw an error).
      */
-    def compare_data(pixels: Array[Array[Int]]) {
+    def compare_data(pixels: Array[Array[Int]], search: Boolean = false) {
         num_shifts_received += 1
         //println("Checking shift", num_shifts_received)
         //println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
-        var flag: Boolean = true
-        for (i <- 0 until 128) {
-            for (j <- 0 until 8) {
-                val penc = poissonEncode(pendings.dequeue)
-                assert(penc == pixels(i)(j))
-                if (!(penc == pixels(i)(j))) flag = false
+        var matches: Boolean = true
+        var skipped: Int = -1
+        do {
+            if (pendings.isEmpty) {
+                throw new Exception("Reached the end of the queue")
             }
+
+            var inserted_pixels = Array.fill(128)(Array.fill(8)(0))
+            for (i <- 0 until 128) {
+                for (j <- 0 until 8) {
+                    inserted_pixels(i)(j) = pendings.dequeue
+                }
+            }
+
+            matches = true
+            for (i <- 0 until 128) {
+                for (j <- 0 until 8) {
+                    if (poissonEncode(inserted_pixels(i)(j)) != pixels(i)(j)) {
+                        matches = false
+                    }
+                }
+            }
+            pending_shifts -= 1
+            skipped += 1
+        } while (!matches && search)
+
+        if (skipped > 0) {
+            println("skipped " + skipped + " shifts")
         }
+
+        assert(matches)
         //println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
-        pending_shifts -= 1
     }
 
     it should "test with random data" in {
@@ -178,6 +202,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
+            var data_dropped = false
             for (i <- 0 until 15) {
                 // Get random pixels
                 val data = generate_pixels(r)
@@ -188,12 +213,19 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 // }
                 val valid = i != 5 // skip the fifth frame to test data_valid
 
+                val fifo_full = r.nextInt(5) == 0
+                c.io.fifo_full.poke(fifo_full.B)
+
                 // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
                 test_pixels(c, data, valid)
 
+                if (c.io.data_dropped.peek().litValue == 1) data_dropped = true
+
                 // Get the output from the module
                 val blocks = get_blocks(c)
-                check_blocks(blocks)
+                check_blocks(blocks, data_dropped)
+
+                if (blocks.length > 0) data_dropped = false
 
                 c.clock.step()
             }
@@ -218,8 +250,15 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 val valid = r.nextInt(5) != 0
                 test_pixels(c, data, valid)
 
+                val fifo_full = r.nextInt(5) == 0
+                c.io.fifo_full.poke(fifo_full.B)
+
+                if (c.io.data_dropped.peek().litValue == 1) data_dropped = true
+
                 val blocks = get_blocks(c)
-                check_blocks(blocks)
+                check_blocks(blocks, data_dropped)
+
+                if (blocks.length > 0) data_dropped = false
 
                 c.clock.step()
             }
