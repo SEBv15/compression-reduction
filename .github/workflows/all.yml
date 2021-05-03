@@ -18,5 +18,10 @@ jobs:
       with:
         java-version: '11'
         distribution: 'adopt'
+    - name: Set up g++
+      run: |
+           sudo apt update
+           sudo apt install gcc-10 g++-10
+      shell: bash
     - name: Run tests
       run: sbt 'testOnly compression.CompressionReductionTest --'
