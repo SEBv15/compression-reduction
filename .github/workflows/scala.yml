@@ -1,4 +1,4 @@
-name: Scala CI
+name: Reduction
 
 on:
   push:
@@ -19,4 +19,4 @@ jobs:
         java-version: '11'
         distribution: 'adopt'
     - name: Run tests
-      run: sbt 'testOnly compression.MergeTest --'
+      run: sbt 'testOnly compression.ReductionTest --'
