@@ -19,6 +19,9 @@ import scala.util.Random
 
 import testUtils._
 
+import org.scalatest.Tag
+object FullTestTag extends Tag("fullTest")
+
 /** Test the whole compression & reduction stage by giving it data and checking if what comes out is the same as what we inserted
  *  This doesn't test any metadata or how the shifts are merged. Just if the pixels are correct.
  *  THIS IS VERY SLOW TO COMPILE (~3 minutes for every test)!
@@ -108,6 +111,11 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             return
         }
 
+        if (shift.length < 20) {
+            val big_zero: BigInt = 0
+            shift = shift ++ Array.fill(20 - shift.length)(big_zero)
+        }
+
         // Reverse the entire reduction and compression for the first shift in the data from the blocks
         val (headers, num_3bits) = getHeaders(shift)
         //println("HEADERS", headers.mkString(" "), num_3bits)
@@ -129,7 +137,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         //println("Pixels", (0 until pixels.length).map(i => pixels(i).mkString(" ")))
 
         // Check against what we have in the queue
-        compare_data(pixels, data_dropped)
+        compare_data(pixels, data_dropped, nleft)
 
         // Do the same for the set of data after this one
         val num_header_blocks = 8 + (num_3bits*3 + 15)/16
@@ -143,18 +151,19 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
      * 
      *  If search is true, it will look through the frames in the pendings queue until it finds one that matches or runs out of frames (which will throw an error).
      */
-    def compare_data(pixels: Array[Array[Int]], search: Boolean = false) {
+    def compare_data(pixels: Array[Array[Int]], search: Boolean = false, nleft: Int = 0) {
         num_shifts_received += 1
         //println("Checking shift", num_shifts_received)
         //println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
         var matches: Boolean = true
         var skipped: Int = -1
+
+        var inserted_pixels = Array.fill(128)(Array.fill(8)(0))
         do {
             if (pendings.isEmpty) {
                 throw new Exception("Reached the end of the queue")
             }
 
-            var inserted_pixels = Array.fill(128)(Array.fill(8)(0))
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
                     inserted_pixels(i)(j) = pendings.dequeue
@@ -177,11 +186,18 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             println("skipped " + skipped + " shifts")
         }
 
+        if (!matches) {
+            println(pending_shifts)
+            println(nleft)
+            println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
+            println(("SHOULD BE", inserted_pixels.map(_.mkString).mkString(" ")))
+            println(("SHOULD BE (POISSONED)", inserted_pixels.map(a => a.map(poissonEncode(_))).map(_.mkString).mkString(" ")))
+        }
         assert(matches)
         //println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
     }
 
-    it should "test with random data" in {
+    it should "test with random data" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
@@ -265,7 +281,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with all zeros" in {
+    it should "test with all zeros" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
@@ -303,7 +319,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with all ones" in {
+    it should "test with all ones" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
@@ -341,7 +357,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test compression bypass" in {
+    it should "test compression bypass" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
 
@@ -380,6 +396,60 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 for (i <- 0 until 128*8) {
                     pixelso(i / 8)(i % 8) = ((data >> (10*(128*8 - 1 - i))) & ((1 << 10) - 1)).intValue()
                     assert(pendings.dequeue == pixelso(i / 8)(i % 8))
+                }
+            }
+        }
+    }
+
+    it should "test with real data" in {
+        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            val frames = load_data_file("python-simulation/data/ptychography.bin")
+
+            pendings.clear()
+            num_shifts_received = 0
+
+            c.io.fifo_full.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.frame_sync.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+
+            c.io.frame_sync.poke(1.B)
+            c.clock.step()
+            c.io.frame_sync.poke(0.B)
+
+            c.io.data_valid.poke(1.B)
+
+            var bits_received = 1
+            var bits_processed = 0
+
+            var s = true
+            for (i <- 131 until frames.length) {
+                for (j <- 0 until 16) {
+                    if (s && j < 6) {
+                    } else {
+                        s = false
+                    val pixels = Array.fill(128)(Array.fill(8)(0))
+                    for (k <- 0 until 128) {
+                        for (l <- 0 until 8) {
+                            pixels(k)(l) = frames(i)(k)(l+j*8)
+                        }
+                    }
+
+                    test_pixels(c, pixels, true)
+
+                    val blocks = get_blocks(c)
+                    check_blocks(blocks)
+
+                    bits_received += blocks.length * 1024
+                    bits_processed = num_shifts_received * 128*8*10
+
+                    if (bits_received > 0) {
+                        println("Compression Ratio", bits_processed.toDouble/bits_received, " - ", i*100/frames.length, "percent", i, j)
+                    }
+
+                    c.clock.step()
+                    }
                 }
             }
         }

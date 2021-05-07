@@ -153,7 +153,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     }
 
     // Calculate the number of blocks used by ceil dividing by elems-per-block. Also, can't have just 1 block. In that case we just send a completely empty block (very rare)
-    val tentative_blocks_used = (len_reg*wordsize.U + (1024-reservebits - 1).U) / (1024-reservebits).U
+    val tentative_blocks_used = (len_reg*wordsize.U +& (1024-reservebits - 1).U) / (1024-reservebits).U
     when (tentative_blocks_used =/= 1.U) {
         io.blocks_used := tentative_blocks_used
     }.otherwise {

@@ -25,4 +25,4 @@ jobs:
            sudo apt-get install verilator
       shell: bash
     - name: Run tests
-      run: sbt 'testOnly compression.CompressionReductionTest --'
+      run: sbt 'testOnly compression.CompressionReductionTest -- -n fullTest'

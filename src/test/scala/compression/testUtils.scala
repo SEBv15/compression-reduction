@@ -11,6 +11,11 @@ import scala.math.min
 import org.scalatest.Tag
 object UnitTestTag extends Tag("unitTest")
 
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.ByteBuffer
+import java.nio.ByteOrder
+
 object testUtils {
     /** Reverse poisson encoding as much as that is possible. 
      *  To get the returned value as close as possible to the original, add half the divisor to the output so its in center of the range of values that would lead to it.
@@ -246,5 +251,18 @@ object testUtils {
             }
         }
         (headers, i3)
+    }
+
+    def load_data_file(filename: String): Array[Array[Array[Short]]] = {
+        val buffer = Files.readAllBytes(Paths.get(filename))
+        //val buffer = Files.readAllBytes(getClass().getResource(filename))
+        val bb = ByteBuffer.wrap(buffer)
+        bb.order(ByteOrder.nativeOrder)
+        val shorts = new Array[Short](buffer.length/2)
+        bb.asShortBuffer.get(shorts)
+        val shorts2D: Array[Array[Short]] = shorts.grouped(128*128).toArray.map(_.toArray)
+        val shorts3D: Array[Array[Array[Short]]] = shorts2D.map(a => a.grouped(128).toArray).toArray
+        //println(shorts3D.map(a => a.map(_.mkString(" "))).map(_.mkString("\n")).mkString("\n-------\n"))
+        return shorts3D
     }
 }
