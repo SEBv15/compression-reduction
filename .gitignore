@@ -343,3 +343,6 @@ hs_err_pid*
 *.fir
 *.anno.json
 ivstat.txt
+
+# Include everything in resource dir (even if it's verilog)
+!src/main/resources/*
