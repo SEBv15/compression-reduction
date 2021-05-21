@@ -58,7 +58,8 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     // --------- MERGE MODULE ----------------------
 
     // Merger to merge the old data with the new
-    val merger = Module(new Merger(wordsize, fifo_size, inwords, 0, 0, false, fifo_size)) // Could possibly be optimized, but this works
+    //val merger = Module(new Merger(wordsize, fifo_size, inwords, 0, 0, false, fifo_size)) // Could possibly be optimized, but this works
+    val merger = Module(new MergeStaged(wordsize, fifo_size, inwords, 0, fifo_size)) // Could possibly be optimized, but this works
 
     // Connect the merger output to the registers
     for (i <- 0 until fifo_size) {

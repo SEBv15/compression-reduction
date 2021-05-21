@@ -36,7 +36,7 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
     })
 
     // Make the first stage of mergers
-    val stage1 = ListBuffer.fill(ninputs/2)(Module(new Merger(blockwidth, numblocks, numblocks, 0, 0, merge_weird)))
+    val stage1 = ListBuffer.fill(ninputs/2)(Module(new MergeStaged(blockwidth, numblocks, numblocks, 0)))
     for (i <- 0 until ninputs/2) {
         stage1(i).io.len1 := io.inlengths(2*i)
         stage1(i).io.len2 := io.inlengths(2*i+1)
@@ -45,7 +45,7 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
     }
 
     // Use a list for all the other stages
-    var stages:ListBuffer[ListBuffer[Merger]] = new ListBuffer[ListBuffer[Merger]]()
+    var stages:ListBuffer[ListBuffer[MergeStaged]] = new ListBuffer[ListBuffer[MergeStaged]]()
     stages.append(stage1)
 
     var nb = 2*numblocks; // number of blocks out of the first merge stage
@@ -59,7 +59,7 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
             nb /= 2;
             merge = true;
         }
-        stages.append(ListBuffer.fill(ninputs/pow(2, n+1).toInt)(Module(new Merger(blockwidth*div, numblocks*pow(2, n).toInt/div, numblocks*pow(2, n).toInt/div, 0, 0, merge_weird))))
+        stages.append(ListBuffer.fill(ninputs/pow(2, n+1).toInt)(Module(new MergeStaged(blockwidth*div, numblocks*pow(2, n).toInt/div, numblocks*pow(2, n).toInt/div, 0))))
 
         // If number of blocks needs to be divided, group two inputs together before feeding it into the next stage
         if (merge) {
