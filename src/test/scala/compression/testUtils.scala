@@ -219,6 +219,46 @@ object testUtils {
         return out
     }
 
+    def reverseReduction(data: Array[BigInt], lengths: Array[Int], maxblocks: Int = 128, elems: Int = 7): Array[BigInt] = {
+        val n = lengths.length // Number of inputs into the reduction stage
+
+        // Construct a list of the input lengths of every merge module at every stage of the reduction
+        var stage_lengths = (0 until log2Floor(n)+1).map(i => ListBuffer.fill(1 << log2Floor(n) - i)(0))
+        for (i <- 0 until n) {
+            stage_lengths(0)(i) = lengths(i)
+        }
+        var l = elems
+        var m = 1
+        for (i <- 1 until stage_lengths.length) {
+            l *= 2
+            if (l > maxblocks) {
+                m *= 2
+                l /= 2
+            }
+            for (j <- 0 until stage_lengths(i).length) {
+                stage_lengths(i)(j) = stage_lengths(i-1)(2*j) + stage_lengths(i-1)(2*j+1)
+                if (stage_lengths(i)(j) % m != 0) {
+                    stage_lengths(i)(j) += m - (stage_lengths(i)(j) % m)
+                }
+            }
+        }
+
+        var out: Array[BigInt] = Array.fill(n*elems)(0)
+        for (i <- 0 until n) {
+            var pos = 0
+            for (j <- 0 until log2Floor(n) + 1) {
+                if ((i / (1 << j)) % 2 == 1) {
+                    pos += stage_lengths(j)((i / (1 << j)) - 1)
+                }
+            }
+            for (j <- 0 until lengths(i)) {
+                out(elems * i + j) = data(pos+j)
+            }
+        }
+
+        return out
+    }
+
     /** Get headers from HierarchicalReduction output
      *
      *  @author Sebastian Strempfer

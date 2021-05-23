@@ -21,7 +21,7 @@ class HierarchicalReductionTest extends FlatSpec with ChiselScalatestTester with
     val nelems = 7
     val maxblocks = 128
 
-    it should "test-hierachical-reduction" taggedAs UnitTestTag in {
+    it should "test-hierachical-reduction" /*taggedAs UnitTestTag*/ in {
         // test case body here
         test(new HierarchicalReduction(ncompressors, nelems, 16, maxblocks)) { c =>
             val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.

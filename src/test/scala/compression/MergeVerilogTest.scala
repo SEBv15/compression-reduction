@@ -31,12 +31,12 @@ class MergeVerilogTest extends FlatSpec with ChiselScalatestTester with Matchers
                     c.io.len1.poke(len1.U)
                     c.io.len2.poke(len2.U)
 
-                    println(len1, len2)
+                    //println(len1, len2)
                     var lo = ListBuffer[Int]()
                     for (i <- 0 until inwords1 + inwords2) {
                         lo += c.io.out(i).peek().litValue.toInt
                     }
-                    println(lo)
+                    //println(lo)
 
                     for (i <- 0 until m.length) {
                         c.io.out(i).expect(m(i).U)

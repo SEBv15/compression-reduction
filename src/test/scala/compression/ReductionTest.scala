@@ -21,7 +21,7 @@ class ReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
     val elemwidth = 16
     val maxblocks = 128
 
-    it should "test reduction random" taggedAs UnitTestTag in {
+    it should "test reduction random" /*taggedAs UnitTestTag*/ in {
         test(new Reduction(ninputs, nelems, elemwidth, maxblocks, true)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.
             val maxval = (1 << elemwidth) - 1

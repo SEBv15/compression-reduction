@@ -123,10 +123,11 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         var datalen = calculateReductionOutputLength(headers, 128, 7)
         //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
         //datalen = 64
-        val red_out = reverseMergeWeird(shift.slice(64*2/16, shift.length), (num_3bits*3 + 15)/16, datalen, 64*3/16)
+        //val red_out = reverseMergeWeird(shift.slice(64*2/16, shift.length), (num_3bits*3 + 15)/16, datalen, 64*3/16)
         //println("REDUCED", red_out.mkString(" "))
 
-        val data = reverseWeirdReduction(red_out.slice(64*3/16, red_out.length), headers, 128, 7)
+        var datastart = 64*2/16 + (num_3bits * 3 + 15)/16
+        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, 128, 7)
         //println("DATA", data.mkString(" "))
 
         //println("Headers", headers.mkString(" "))
@@ -260,7 +261,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             c.clock.step()
             c.io.frame_sync.poke(0.B)
 
-            for (i <- 0 until 100) {
+            for (i <- 0 until 200) {
                 val data = generate_pixels(r)
 
                 val valid = r.nextInt(5) != 0
@@ -424,11 +425,11 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             var bits_processed = 0
 
             var s = true
-            for (i <- 131 until frames.length) {
+            for (i <- 0 until frames.length) {
                 for (j <- 0 until 16) {
-                    if (s && j < 6) {
-                    } else {
-                        s = false
+                    //if (s && j < 6) {
+                    //} else {
+                    //    s = false
                     val pixels = Array.fill(128)(Array.fill(8)(0))
                     for (k <- 0 until 128) {
                         for (l <- 0 until 8) {
@@ -449,7 +450,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     }
 
                     c.clock.step()
-                    }
+                    //}
                 }
             }
         }
