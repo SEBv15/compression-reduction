@@ -61,6 +61,8 @@ class CompressionReductionNoPackingTest extends FlatSpec with ChiselScalatestTes
                         }
                     }
                 }
+
+                c.clock.step()
             }
         }
     }
