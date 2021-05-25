@@ -26,3 +26,8 @@ jobs:
       shell: bash
     - name: Run tests
       run: sbt 'testOnly compression.CompressionReductionTest -- -n fullTest'
+    - name: Publish Test Report
+      if: ${{ always() }}
+      uses: scacap/action-surefire-report@v1
+      with:
+        report_paths: '**/target/test-reports/TEST-*.xml'

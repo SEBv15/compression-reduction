@@ -14,14 +14,14 @@ import scala.math.max
  *  @param wordsize Size of the input words of data
  *  @param reservebits How many bits in the beginning to use as metadata. One is used to indicate whether it's the first block, the rest is the frame number.
  */
-class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val reservebits:Int = 8) extends Module {
+class ShiftPacker(val inbits:Int = 64*10*16 + 64*6, val wordsize:Int = 64, val reservebits:Int = 8) extends Module {
     val inwords = (inbits + wordsize-1) / wordsize
     require(inwords > 0)
-    require(inwords*wordsize <= 8*1024 - 10*reservebits)
+    require(inwords*wordsize <= 11*(1024 - reservebits))
     require(isPow2(wordsize))
     require(reservebits >= 1)
 
-    val fifo_size = 10*(1024 - reservebits)/wordsize
+    val fifo_size = 11*(1024 - reservebits)/wordsize
     val num_guaranteed = 2*(1024 - reservebits)/wordsize // Number of words needed to fill 2 1024-bit blocks
 
     // Generate default value of all ones
@@ -34,7 +34,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
         val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
         val soft_rst = Input(Bool())                    // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
-        val out = Output(Vec(10, UInt(1024.W)))         // 10 1024-bit output words
+        val out = Output(Vec(11, UInt(1024.W)))         // 11 1024-bit output words
         val blocks_used = Output(UInt(4.W))             // How many blocks contain data
         val write_enable = Output(Bool())               // Whether to write the output to the FIFO
         val data_dropped = Output(Bool())               // Flag that turns on when data is dropped and turns off after the next successful write
@@ -117,7 +117,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
 
     // --------- FORMAT REGISTER DATA FOR FIFO ----
 
-    val metadata_inserter = Module(new InsertEndMetadata(1024*10, wordsize, reservebits, 16))
+    val metadata_inserter = Module(new InsertEndMetadata(1024*11, wordsize, reservebits, 16))
     metadata_inserter.io.len := len_reg
     metadata_inserter.io.metadata := frame_num_reg
 
@@ -127,7 +127,7 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     default_metadata := Cat(0.U(1.W), frame_num_reg(6, 0))
 
     // Take the data from the register and put it into 10 1024-bit words with metadata at the front.
-    for (i <- 0 until 10) {
+    for (i <- 0 until 11) {
         val vecmin = fifo_size * wordsize - i*(1024-reservebits) - 1 // Leftmost bit index
         val vecmax = fifo_size * wordsize - (i+1)*(1024-reservebits) // Rightmost bit index
         val paddingbits = 1024 - reservebits - (vecmin + 1 - max(vecmax, 0)) // At the end there will not be enough elements to fill an entire 1024-bit word. We need padding bits there.
@@ -162,6 +162,6 @@ class EnsureBlocks(val inbits:Int = 64*7*16 + 64*5, val wordsize:Int = 64, val r
     }
 }
 
-object EnsureBlocks extends App {
-    chisel3.Driver.execute(args, () => new EnsureBlocks)
+object ShiftPacker extends App {
+    chisel3.Driver.execute(args, () => new ShiftPacker)
 }

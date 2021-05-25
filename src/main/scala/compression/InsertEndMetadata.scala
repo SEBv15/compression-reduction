@@ -12,17 +12,17 @@ import chisel3.util._
  *  @param reservedbits How many bits in the beginning are reserved
  *  @param len width of the metadata to be inserted
  */
-class InsertEndMetadata(val inbits: Int = 1024*10, val wordsize: Int = 64, val reservedbits:Int = 8, val metadatawidth:Int = 16) extends Module {
+class InsertEndMetadata(val inbits: Int = 1024*11, val wordsize: Int = 64, val reservedbits:Int = 8, val metadatawidth:Int = 16) extends Module {
     val inwords = (inbits + wordsize-1)/wordsize
 
     val io = IO(new Bundle {
-        val blocks = Input(Vec(10, UInt(1024.W)))       // The blocks
+        val blocks = Input(Vec(11, UInt(1024.W)))       // The blocks
         val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
         val metadata = Input(UInt(metadatawidth.W))               // The metadata to insert
-        val out = Output(Vec(10, UInt(1024.W)))         // The blocks with metadata
+        val out = Output(Vec(11, UInt(1024.W)))         // The blocks with metadata
     })
 
-    for (i <- 0 until 10) {
+    for (i <- 0 until 11) {
         val maxblocks = (i*(1024 - reservedbits) + 1024 - reservedbits - metadatawidth) / wordsize
         when (io.len <= maxblocks.U) {
             io.out(i) := Cat(io.blocks(i)(1023, metadatawidth), io.metadata)

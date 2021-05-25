@@ -16,6 +16,8 @@ import java.nio.file.Paths
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
 
+import scala.util.Random
+
 object testUtils {
     /** Reverse poisson encoding as much as that is possible. 
      *  To get the returned value as close as possible to the original, add half the divisor to the output so its in center of the range of values that would lead to it.
@@ -52,16 +54,36 @@ object testUtils {
      *  @param data 2D compression output vector flattened to a 1D array
      *  @return 2D array of poisson encoded pixels (128x8)
      */
-    def deshuffle(headers: Array[Int], data: Array[BigInt]) = {
+    def deshuffle(headers: Array[Int], data: Array[BigInt], elems: Int = 7) = {
         var deshuffled = Array.fill(128)(Array.fill(8)(0))
         for (i <- 0 until 64) {
             for (j <- 0 until 16) {
                 for (k <- 0 until headers(i)) {
-                    deshuffled(i/2*4 + j/4)(j % 4 + 4*(i%2)) += (((data(7*i + k) >> j) & 1) << k).toInt
+                    deshuffled(i/2*4 + j/4)(j % 4 + 4*(i%2)) += (((data(elems*i + k) >> j) & 1) << k).toInt
                 }
             }
         }
         deshuffled
+    }
+
+
+    /** Generates a frames worth of random pixels
+     *
+     *  Each frame is capped at a random number of bits so we see more variety in compression efficiency. 
+     *  Also each 16-pixel block is capped by another random number of bits.
+     */
+    def generate_pixels(r: Random) = {
+        var data = Array.fill(128)(Array.fill(8)(0))
+        val framebits = r.nextInt(11)
+        for (i <- 0 until 128 by 2) {
+            val numbits = r.nextInt(framebits+1)
+            for (j <- 0 until 2) {
+                for (k <- 0 until 8) {
+                    data(i+j)(k) = r.nextInt(1 << numbits)
+                }
+            }
+        }
+        data
     }
 
     /** Concatenate an array like chisel would if it were a Vec

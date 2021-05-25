@@ -12,10 +12,6 @@ import chisel3.util._
  *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
  */
 class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 128) extends Module {
-    require(isPow2(pixel_rows))
-    require(isPow2(pixel_cols))
-    require(pixel_cols == 8)
-    require(pixel_rows >= 4)
 
     val big_one: BigInt = 1
 
@@ -29,6 +25,9 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
         // When high, the raw input data will be written to the fifo.
         val bypass_compression = Input(Bool())
+
+        // Whether to use poisson encoding
+        val poisson = Input(Bool())
 
         // Frame sync should be set high every 16 ticks on the first shift of a new frame. 
         // It resets the last 4 bits of the shift number to 0 and increases the frame number.
@@ -45,7 +44,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
         // When compressing, this will be the compressed data from multiple shifts merged together, formatted into 1024-bit words to fit the FIFO.
         // Otherwise it will be the raw pixel data row by row.
-        val blocks = Output(Vec(10, UInt(1024.W)))
+        val blocks = Output(Vec(11, UInt(1024.W)))
 
         // Number of blocks used (max = 10).
         val blocks_used = Output(UInt(4.W))
@@ -58,77 +57,40 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
         val data_dropped = Output(Bool())
     })
 
-    // Register to store whether the first sync pulse was received and we should start sending data
-    val received_first_sync = RegInit(0.B)
-    when (io.soft_rst) {
-        received_first_sync := 0.B
-    }
-    when (io.frame_sync && ~io.soft_rst) {
-        received_first_sync := 1.B
-    }
+    // Initialize frame counter
+    val frame_counter = Module(new FrameCounter(16))
+    frame_counter.io.frame_sync := io.frame_sync
+    frame_counter.io.data_valid := io.data_valid
+    frame_counter.io.soft_rst := io.soft_rst
 
-    // Register which increments every tick
-    val shift_num = RegInit(0.U(16.W))
-    when (io.soft_rst) {
-        shift_num := 0.U
-    }.otherwise {
-        when (io.frame_sync) {
-            // On frame sync, extract the frame number (discarding the last 4 shift number bits), increase it by one, and set the shift number to zero.
-            // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
-            shift_num := Cat(shift_num(15, 4) + 1.U, 0.U(4.W))
-        }.otherwise {
-            when (io.data_valid && (received_first_sync || io.frame_sync)) {
-                shift_num := shift_num + 1.U
-            }.otherwise {
-                shift_num := shift_num
-            }
-        }
-    }
+    val shift_num = Wire(UInt(16.W))
+    val received_first_sync = Wire(Bool())
+    shift_num := frame_counter.io.shift_num
+    received_first_sync := frame_counter.io.received_first_sync
 
-    // Encode the pixels from 10 bits to 7
-    val encoder = List.fill(pixel_rows)(List.fill(pixel_cols)(Module(new PoissonEncoding)))
-    val encoded_pixels = Wire(Vec(pixel_rows, Vec(pixel_cols, UInt(7.W))))
-    for (i <- 0 until pixel_rows) {
-        for (j <- 0 until pixel_cols) {
-            encoder(i)(j).io.in := io.pixels(i)(j)
-            encoded_pixels(i)(j) := encoder(i)(j).io.out
-        }
-    }
-
-    // Compress the pixels in 4x4 squares
-    val compressors = List.fill(pixel_rows/2)(Module(new LengthCompress(16, 7)))
-    for (i <- 0 until pixel_rows by 4) {
-        for (j <- 0 until pixel_cols by 4) {
-            compressors(i/2 + j/4).io.in := (0 until 4).map(x => encoded_pixels(i+x).slice(j, j+4)).reduce((a, b) => a ++ b)
-        }
-    }
-
-    // Pass the compressed pixels through the reduction stage
-    val reducer = Module(new HierarchicalReduction(pixel_rows/2, 7, 16, maxblocks))
-    for (i <- 0 until pixel_rows/2) {
-        reducer.io.datain(i) := compressors(i).io.data
-        reducer.io.headerin(i) := compressors(i).io.header
-    }
+    val compressor = Module(new CompressionReductionNoPacking(pixel_rows, pixel_cols, maxblocks))
+    compressor.io.pixels := io.pixels
+    compressor.io.poisson := io.poisson
 
     // Group the output into 64-bit blocks
-    val padded_reducer_out = reducer.io.out :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U
-    val reduced_64 = (0 until reducer.io.out.size by 4).map(i => Cat(padded_reducer_out.slice(i, i+4)))
+    val padded_compressor_out = compressor.io.out :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U
+    val compressed_64 = (0 until compressor.io.out.size by 4).map(i => Cat(padded_compressor_out.slice(i, i+4)))
 
     // Pass the data through our merger / 2 block ensurer
-    val block_merger = Module(new EnsureBlocks(pixel_rows/2*(7*16 + 5), 64, 8))
-    block_merger.io.soft_rst := io.soft_rst
-    block_merger.io.in := reduced_64
+    val packer = Module(new ShiftPacker(pixel_rows/2*(10*16 + 6), 64, 8))
+    packer.io.soft_rst := io.soft_rst
+    packer.io.in := compressed_64
     // Only send if the data is valid and we have received the first sync pulse
     when (io.data_valid && (received_first_sync || io.frame_sync) && ~io.soft_rst) {
-        block_merger.io.len := (reducer.io.outlen +& 3.U) / 4.U
+        packer.io.len := (compressor.io.outlen +& 3.U) / 4.U
     }.otherwise {
-        block_merger.io.len := 0.U
+        packer.io.len := 0.U
     }
-    block_merger.io.frame_num := shift_num
-    block_merger.io.fifo_full := io.fifo_full
+    packer.io.frame_num := shift_num
+    packer.io.fifo_full := io.fifo_full
 
     // Add a pipeline stage at the end
-    val data_reg = List.fill(10)(RegInit(((big_one << 1024)-1).U(1024.W)))
+    val data_reg = List.fill(11)(RegInit(((big_one << 1024)-1).U(1024.W)))
     val blocks_used_reg = RegInit(0.U(4.W))
     val write_enable_reg = RegInit(0.B)
     val data_dropped_reg = RegInit(0.B)
@@ -138,19 +100,20 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
         for (i <- 0 until 10) {
             data_reg(i) := Cat((0 until pixel_rows).map(j => Cat(io.pixels(j))))((10-i)*1024-1, (9-i)*1024)
         }
+        data_reg(10) := 0.U
         blocks_used_reg := 10.U
         write_enable_reg := ~io.fifo_full && ~io.soft_rst
         data_dropped_reg := io.fifo_full
     }.otherwise {
-        for (i <- 0 until 10) {
-            data_reg(i) := block_merger.io.out(i)
+        for (i <- 0 until 11) {
+            data_reg(i) := packer.io.out(i)
         }
-        blocks_used_reg := block_merger.io.blocks_used
-        write_enable_reg := block_merger.io.write_enable
-        data_dropped_reg := block_merger.io.data_dropped
+        blocks_used_reg := packer.io.blocks_used
+        write_enable_reg := packer.io.write_enable
+        data_dropped_reg := packer.io.data_dropped
     }
 
-    for (i <- 0 until 10) {
+    for (i <- 0 until 11) {
         io.blocks(i) := data_reg(i)
     }
     io.blocks_used := blocks_used_reg

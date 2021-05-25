@@ -24,7 +24,7 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
 
     val big_one: BigInt = 1
     val headerwidth = log2Floor(nwords) + 1
-    val outsize = ncompressors*nwords + (ncompressors*2 + ncompressors*3 + wordsize-1)/wordsize
+    val outsize = ncompressors*nwords + (ncompressors*2 + ncompressors*headerwidth + wordsize-1)/wordsize
 
     val io = IO(new Bundle {
         val datain = Input(Vec(ncompressors, Vec(nwords, UInt(wordsize.W))))

@@ -19,12 +19,12 @@ import testUtils._
  *  @author Sebastian Strempfer
  *  @todo Make it work again with new metadata
  */
-class EnsureBlocksTest extends FlatSpec with ChiselScalatestTester with Matchers {
+class ShiftPackerTest extends FlatSpec with ChiselScalatestTester with Matchers {
     val q = new Queue[BigInt]()
 
     it should "test-ensure-blocks" in {
         // test case body here
-        test(new EnsureBlocks()) { c =>
+        test(new ShiftPacker()) { c =>
             val r = new Random(1)
             val big_one: BigInt = 1
 
