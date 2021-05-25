@@ -28,6 +28,6 @@ jobs:
       run: sbt "testOnly * -- -n unitTest"
     - name: Publish Test Report
       if: ${{ always() }}
-      uses: scacap/action-surefire-report@v1
+      uses: mikepenz/action-junit-report@v2
       with:
         report_paths: '**/target/test-reports/TEST-*.xml'
