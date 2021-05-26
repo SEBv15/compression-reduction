@@ -7,7 +7,38 @@ on:
     branches: [ master ]
 
 jobs:
-  build:
+  poisson:
+    name: "Using Poisson"
+    env:
+      POISSON: true
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Set up JDK 11
+      uses: actions/setup-java@v2
+      with:
+        java-version: '11'
+        distribution: 'adopt'
+    - name: Set up g++ and verilator
+      run: |
+           sudo apt update
+           sudo apt install gcc-10 g++-10
+           sudo apt-get install verilator
+      shell: bash
+    - name: Run tests
+      run: sbt 'testOnly compression.CompressionReductionTest -- -n fullTest'
+    - name: Publish Test Report
+      if: ${{ always() }}
+      uses: mikepenz/action-junit-report@v2
+      with:
+        report_paths: '**/target/test-reports/TEST-*.xml'
+
+  no_poisson:
+    name: "Without Poisson"
+    env:
+      POISSON: false
 
     runs-on: ubuntu-latest
 
