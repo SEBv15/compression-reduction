@@ -32,8 +32,12 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     var pendings = new Queue[Int] // queue holds inserted pixels in row-major order
     var pending_shifts = 0 // how many shifts are still in the queue (still buffering in the ensureblocks module or pipeline)
     var num_shifts_received = 0 // Number of shifts that have been processed out of the compression block
+    val maxblocks = 0
 
-    val poisson = false
+    // read whether to use poisson from the environment variables
+    val poisson = scala.util.Properties.envOrElse("POISSON", "true").toBoolean
+    var poissonString = ""
+    if (poisson) poissonString = " (poisson)"
 
     /** Inserts an array of pixels into the compression module
      *
@@ -103,14 +107,14 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         val (headers, num_4bits) = getHeaders(shift, 64, 4)
         //println("HEADERS", headers.mkString(" "), num_3bits)
 
-        var datalen = calculateReductionOutputLength(headers, 128, 10)
+        var datalen = calculateReductionOutputLength(headers, maxblocks, 10)
         //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
         //datalen = 64
         //val red_out = reverseMergeWeird(shift.slice(64*2/16, shift.length), (num_3bits*3 + 15)/16, datalen, 64*3/16)
         //println("REDUCED", red_out.mkString(" "))
 
         var datastart = 64*2/16 + (num_4bits * 4 + 15)/16
-        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, 128, 10)
+        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, maxblocks, 10)
         //println("DATA", data.mkString(" "))
 
         //println("Headers", headers.mkString(" "))
@@ -187,8 +191,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         //println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
     }
 
-    it should "test with random data" taggedAs FullTestTag in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    it should "test with random data" + poissonString taggedAs FullTestTag in {
+        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
                     c.io.pixels(i)(j).poke(10.U)
@@ -272,8 +276,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with all zeros" taggedAs FullTestTag in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    it should "test with all zeros" + poissonString taggedAs FullTestTag in {
+        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
@@ -311,8 +315,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with all ones" taggedAs FullTestTag in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    it should "test with all ones" + poissonString taggedAs FullTestTag in {
+        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
@@ -350,8 +354,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test compression bypass" taggedAs FullTestTag in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    it should "test compression bypass" + poissonString taggedAs FullTestTag in {
+        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
             c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
@@ -362,7 +366,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
-            for (i <- 0 until 20) {
+            for (i <- 0 until 25) {
                 // Get random pixels
                 val pixels = generate_pixels(r)
 
@@ -394,8 +398,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with real data" in {
-        test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    it should "test with real data" + poissonString in {
+        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val frames = load_data_file("python-simulation/data/ptychography.bin")
 
             pendings.clear()

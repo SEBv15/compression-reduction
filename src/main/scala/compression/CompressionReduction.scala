@@ -11,7 +11,7 @@ import chisel3.util._
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
  *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
  */
-class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 128) extends Module {
+class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 0) extends Module {
 
     val big_one: BigInt = 1
 

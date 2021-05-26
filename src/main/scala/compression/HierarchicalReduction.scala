@@ -58,7 +58,7 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
     }
 
     // Reduce data
-    val data_reduction = Module(new Reduction(ncompressors, nwords, wordsize, 128, true))
+    val data_reduction = Module(new Reduction(ncompressors, nwords, wordsize, maxblocks, true))
     data_reduction.io.in := io.datain
     data_reduction.io.inlengths := io.headerin
 

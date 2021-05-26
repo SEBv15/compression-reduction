@@ -163,7 +163,7 @@ object testUtils {
         var l = elems
         while (ms >= 2) {
             l *= 2
-            if (l > maxblocks) {
+            if (l > maxblocks && maxblocks != 0) {
                 l /= 2
                 m *= 2
             }
@@ -202,7 +202,7 @@ object testUtils {
         var m = 1
         for (i <- 1 until stage_lengths.length) {
             l *= 2
-            if (l > maxblocks) {
+            if (l > maxblocks && maxblocks != 0) {
                 m *= 2
                 l /= 2
             }
@@ -253,7 +253,7 @@ object testUtils {
         var m = 1
         for (i <- 1 until stage_lengths.length) {
             l *= 2
-            if (l > maxblocks) {
+            if (l > maxblocks && maxblocks != 0) {
                 m *= 2
                 l /= 2
             }
