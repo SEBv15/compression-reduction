@@ -33,6 +33,8 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     var pending_shifts = 0 // how many shifts are still in the queue (still buffering in the ensureblocks module or pipeline)
     var num_shifts_received = 0 // Number of shifts that have been processed out of the compression block
 
+    val poisson = false
+
     /** Inserts an array of pixels into the compression module
      *
      *  The valid parameter signals whether the data is valid and should therefore be added to the queue to check the output with
@@ -155,8 +157,14 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             matches = true
             for (i <- 0 until 128) {
                 for (j <- 0 until 8) {
-                    if (poissonEncode(inserted_pixels(i)(j)) != pixels(i)(j)) {
-                        matches = false
+                    if (poisson) {
+                        if (poissonEncode(inserted_pixels(i)(j)) != pixels(i)(j)) {
+                            matches = false
+                        }
+                    } else {
+                        if (inserted_pixels(i)(j) != pixels(i)(j)) {
+                            matches = false
+                        }
                     }
                 }
             }
@@ -186,7 +194,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(10.U)
                 }
             }
-            c.io.poisson.poke(1.B)
+            c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -272,7 +280,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(0.U)
                 }
             }
-            c.io.poisson.poke(1.B)
+            c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -311,7 +319,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(0.U)
                 }
             }
-            c.io.poisson.poke(1.B)
+            c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -345,7 +353,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     it should "test compression bypass" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
-            c.io.poisson.poke(1.B)
+            c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(1.B)
             c.io.frame_sync.poke(0.B)
@@ -393,7 +401,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             pendings.clear()
             num_shifts_received = 0
 
-            c.io.poisson.poke(1.B)
+            c.io.poisson.poke(poisson.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
