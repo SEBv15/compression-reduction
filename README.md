@@ -1,79 +1,49 @@
 # Compression & Reduction
 
-This repository contains code for the edge compression and reduction of pixel data.
+This repository contains chisel3 RTL code for the edge compression and reduction of pixel data. 
 
-## Modules
+### High-level description
 
-### `BitShufflePerChannel.scala`
+The module takes in 1024 10-bit pixels and passes them in groups of 16 to 64 individual lossless compressors. There is also an option to reduce the number of bits per pixel to 7 by leveraging the poisson noise of the pixel value (lossy). 
 
-Bit shuffling module that groups bits by significance
+The compressors group the bits with same significance together and then report the position of the last non-zero element. With the assumption that most pixel values are close to zero, this method will discard a lot of zeros and yield a good compression ratio.
 
-### `CompressionReduction.scala`
+The variable-length output of those 64 individual compressors is then merged together to yield one continuous output.
 
-Main module that incorporates all the other modules. Takes in pixel data, compresses it, and writes it to the FIFO.
+All this happens within a single clock tick.
 
-Depends on: [`EnsureBlocks.scala`](#ensureblocksscala), [`HierarchicalReduction.scala`](#hierarchicalreductionscala), [`LengthCompress.scala`](#lengthcompressscala), [`PoissonEncoding.scala`](#poissonencodingscala)
-
-### `CompressionReductionWrapper.scala`
-
-Wrapper for `CompressionReduction.scala` that simplifies the ports
-
-Depends on: [`CompressionReduction.scala`](#compressionreductionscala)
-
-### `EnsureBlocks.scala`
-
-This module ensures that there are always at least 2 blocks written to the FIFO. It also packs consecutive shifts to increase compression ratio. The metadata at the beginning of every block is also inserted here.
-
-Depends on: [`MakeUnusedDefault.scala`](#makeunuseddefaultscala), [`Merger.scala`](#mergerscala)
-
-### `HierarchicalReduction.scala`
-
-Takes data from the compressors, generates the hierarchical headers, and reduces the data + headers.
-
-Depends on: [`Merger.scala`](#mergerscala), [`Reduction.scala`](#reductionscala)
-
-### `LengthCompress.scala`
-
-The main compressor. Simply passes the data through and generates a header which indicates the position of the last non-zero word.
-
-Depends on: [`BitShufflePerChannel.scala`](#bitshuffleperchannelscala)
-
-### `MakeUnusedDefault.scala`
-
-The merge modules don't respect unused data and make it whatever they like. However we want it to be all 1s. That's what this module is for.
-
-### `Merge.scala`
-
-Merges data by shifting the second input so the output is continuous.
-
-### `MergeWeird.scala`
-
-Merges data by moving elements from the end of the second input into the gap between the first and the second.
-
-### `Merger.scala`
-
-Module which can switch between Merge and MergeWeird (during verilog generation) based on a parameter.
-
-Depends on: [`Merge.scala`](#mergescala), [`MergeWeird.scala`](#mergeweirdscala)
-
-### `PoissonEncoding.scala`
-
-Reduces the number of bits needed to represent a pixel value by leveraging poisson noise. (lossy compression)
-
-### `Reduction.scala`
-
-A general reduction module which takes in a number of different vecs and outputs continuous data. This is used to reduce the headers and data. Uses `Merger.scala` internally.
-
-Depends on: [`Merger.scala`](#mergerscala)
+To most effictively use the on-chip memory, the output across multiple clock ticks is buffered and merged until a write will fill a memory block most effictively.
 
 ## Usage
 
-To generate verilog for a module
+The top level modules are `CompressionReduction.scala` and `CompressionReductionWrapper.scala` where the latter is simply a wrapper that makes the ports easier to use with verilog.
+
+### Generating Verilog
+
+To get the verilog of an arbitrary module (including submodules) use
 ```sh
 sbt 'runMain compression.[module class name]'
 ```
 
-To run a test case
+The top level module can be generated using
+```sh
+sbt 'runMain compression.CompressionReductionWrapper'
+```
+
+### Testing
+Most of the modules have test cases, which can be run using
 ```sh
 sbt 'testOnly compression.[test case class name] --'
 ```
+
+To run all test cases on submodules use
+```sh
+sbt 'testOnly compression.* -- -n "unitTest"'
+```
+
+And to run the testbench for the entire module use
+```sh
+sbt 'testOnly compression.* -- -n "fullTest"'
+```
+
+running tests can take a considerable amount of time on large modules. For example running the `fullTest` suite takes around 15 minutes.
