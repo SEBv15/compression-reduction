@@ -33,6 +33,7 @@ class ShiftPacker(val inbits:Int = 64*10*16 + 64*6, val wordsize:Int = 64, val r
         val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
         val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
+        val poisson = Input(Bool())
         val soft_rst = Input(Bool())                    // soft reset will cause the module to "write out the data" immediately while keeping the write enable low
         val out = Output(Vec(11, UInt(1024.W)))         // 11 1024-bit output words
         val blocks_used = Output(UInt(4.W))             // How many blocks contain data
@@ -119,7 +120,7 @@ class ShiftPacker(val inbits:Int = 64*10*16 + 64*6, val wordsize:Int = 64, val r
 
     val metadata_inserter = Module(new InsertEndMetadata(1024*11, wordsize, reservebits, 16))
     metadata_inserter.io.len := len_reg
-    metadata_inserter.io.metadata := frame_num_reg
+    metadata_inserter.io.metadata := Cat(io.poisson, frame_num_reg(14, 0))
 
     val first_block_metadata = Wire(UInt(8.W))
     first_block_metadata := Cat(1.U(1.W), blocks_merged_reg)

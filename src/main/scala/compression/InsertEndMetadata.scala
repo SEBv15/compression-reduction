@@ -22,7 +22,7 @@ class InsertEndMetadata(val inbits: Int = 1024*11, val wordsize: Int = 64, val r
         val out = Output(Vec(11, UInt(1024.W)))         // The blocks with metadata
     })
 
-    for (i <- 0 until 11) {
+    for (i <- 0 until inbits/1024) {
         val maxblocks = (i*(1024 - reservedbits) + 1024 - reservedbits - metadatawidth) / wordsize
         when (io.len <= maxblocks.U) {
             io.out(i) := Cat(io.blocks(i)(1023, metadatawidth), io.metadata)

@@ -79,6 +79,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     // Pass the data through our merger / 2 block ensurer
     val packer = Module(new ShiftPacker(pixel_rows/2*(10*16 + 6), 64, 8))
     packer.io.soft_rst := io.soft_rst
+    packer.io.poisson := io.poisson
     packer.io.in := compressed_64
     // Only send if the data is valid and we have received the first sync pulse
     when (io.data_valid && (received_first_sync || io.frame_sync) && ~io.soft_rst) {

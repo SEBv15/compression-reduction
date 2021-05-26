@@ -22,8 +22,6 @@ import testUtils._
 import org.scalatest.Tag
 
 /** Test the whole compression & reduction stage by giving it data and checking if what comes out is the same as what we inserted
- *  This doesn't test any metadata or how the shifts are merged. Just if the pixels are correct.
- *  THIS IS VERY SLOW TO COMPILE (~3 minutes for every test)!
  *
  *  @author Sebastian Strempfer
  */

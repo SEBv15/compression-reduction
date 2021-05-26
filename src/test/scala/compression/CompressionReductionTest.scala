@@ -92,29 +92,29 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             return
         }
 
-        if (shift.length < 20) {
+        if (shift.length < 24) {
             val big_zero: BigInt = 0
-            shift = shift ++ Array.fill(20 - shift.length)(big_zero)
+            shift = shift ++ Array.fill(24 - shift.length)(big_zero)
         }
 
         // Reverse the entire reduction and compression for the first shift in the data from the blocks
-        val (headers, num_3bits) = getHeaders(shift)
+        val (headers, num_4bits) = getHeaders(shift, 64, 4)
         //println("HEADERS", headers.mkString(" "), num_3bits)
 
-        var datalen = calculateReductionOutputLength(headers, 128, 7)
+        var datalen = calculateReductionOutputLength(headers, 128, 10)
         //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
         //datalen = 64
         //val red_out = reverseMergeWeird(shift.slice(64*2/16, shift.length), (num_3bits*3 + 15)/16, datalen, 64*3/16)
         //println("REDUCED", red_out.mkString(" "))
 
-        var datastart = 64*2/16 + (num_3bits * 3 + 15)/16
-        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, 128, 7)
+        var datastart = 64*2/16 + (num_4bits * 4 + 15)/16
+        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, 128, 10)
         //println("DATA", data.mkString(" "))
 
         //println("Headers", headers.mkString(" "))
         //println("Data", data.mkString(" "))
 
-        val pixels = deshuffle(headers, data)
+        val pixels = deshuffle(headers, data, 10)
 
         //println("Pixels", (0 until pixels.length).map(i => pixels(i).mkString(" ")))
 
@@ -122,7 +122,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         compare_data(pixels, data_dropped, nleft)
 
         // Do the same for the set of data after this one
-        val num_header_blocks = 8 + (num_3bits*3 + 15)/16
+        val num_header_blocks = 8 + (num_4bits*4 + 15)/16
         datalen += num_header_blocks
         datalen += (4 - (datalen % 4)) % 4
         shift = shift.slice(((datalen + 3)/4)*4, shift.length)
@@ -186,6 +186,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(10.U)
                 }
             }
+            c.io.poisson.poke(1.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -271,6 +272,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(0.U)
                 }
             }
+            c.io.poisson.poke(1.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -309,6 +311,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                     c.io.pixels(i)(j).poke(0.U)
                 }
             }
+            c.io.poisson.poke(1.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)
@@ -323,7 +326,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
 
             val r = new Random(1)
 
-            for (i <- 0 until 20) {
+            for (i <- 0 until 25) {
                 // Get random pixels
                 val data = Array.fill(128)(Array.fill(8)((1 << 10) - 1))
 
@@ -342,7 +345,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
     it should "test compression bypass" taggedAs FullTestTag in {
         test(new CompressionReduction).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             pendings.clear()
-
+            c.io.poisson.poke(1.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(1.B)
             c.io.frame_sync.poke(0.B)
@@ -390,6 +393,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
             pendings.clear()
             num_shifts_received = 0
 
+            c.io.poisson.poke(1.B)
             c.io.fifo_full.poke(0.B)
             c.io.bypass_compression.poke(0.B)
             c.io.frame_sync.poke(0.B)

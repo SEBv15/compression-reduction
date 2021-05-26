@@ -14,12 +14,12 @@ class InsertEndMetadataTest extends FlatSpec with ChiselScalatestTester with Mat
     it should "test insert end metada" taggedAs UnitTestTag in {
         test(new InsertEndMetadata()) { c =>
             c.io.metadata.poke(((1 << 16) - 1).U)
-            for (i <- 0 until 10) {
+            for (i <- 0 until 11) {
                 c.io.blocks(i).poke((1 << 16).U)
             }
-            for (i <- 0 until 1024*10/64) {
+            for (i <- 0 until 1024*11/64) {
                 c.io.len.poke(i.U)
-                for (j <- 0 until 10) {
+                for (j <- 0 until 11) {
                     if (1024*(j+1) - (i*64 + 8*(j+1)) >= 16) {
                         c.io.out(j).expect(((1 << 17) - 1).U)
                     } else {
