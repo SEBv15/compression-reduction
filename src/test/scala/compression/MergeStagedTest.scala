@@ -12,7 +12,7 @@ import scala.collection.mutable.ListBuffer
  */
 class MergeStagedTest extends FlatSpec with ChiselScalatestTester with Matchers {
     def testwith(inwords1: Int, inwords2: Int, minwords1: Int) = {
-        test(new MergeStaged(16, inwords1, inwords2, minwords1)) { c =>
+        test(new MergeStaged(16, inwords1, inwords2, minwords1, 0)) { c =>
             for (i <- 0 until inwords1) {
                 c.io.data1(i).poke((i+1).U)
             }

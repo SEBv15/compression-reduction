@@ -54,7 +54,7 @@ class ShiftPackerTest extends FlatSpec with ChiselScalatestTester with Matchers 
                 if (len > 0)
                     q += indata.toList
 
-                println("Inserted " + len + " words")
+                //println("Inserted " + len + " words")
 
                 if (c.io.write_enable.peek().litValue != 0) {
                     val outl = c.io.blocks_used.peek().litValue
@@ -67,7 +67,7 @@ class ShiftPackerTest extends FlatSpec with ChiselScalatestTester with Matchers 
                         blocks += c.io.out(i).peek().litValue
                     }
                     val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
-                    println("Got " + outl + " blocks with " + nmerged + " shifts")
+                    //println("Got " + outl + " blocks with " + nmerged + " shifts")
 
                     val data = blocksToData(blocks.toArray, 64)
 

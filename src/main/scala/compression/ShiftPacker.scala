@@ -31,7 +31,7 @@ class ShiftPacker(val inbits:Int = 64*10*16 + 64*6, val wordsize:Int = 64, val r
 
     val io = IO(new Bundle {
         val in = Input(Vec(inwords, UInt(wordsize.W)))  // Incoming data
-        val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input
+        val len = Input(UInt((log2Floor(inwords)+1).W)) // Number of wordsize-bit blocks in the input. len=0 inputs will not be counted in blocks_merged. 
         val frame_num = Input(UInt(16.W))               // Frame number of the data
         val fifo_full = Input(Bool())                   // almost full signal from FIFO (may discard data when high)
         val poisson = Input(Bool())

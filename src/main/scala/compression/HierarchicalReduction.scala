@@ -47,7 +47,7 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
     val twobit_headers_wordsize = (0 until ncompressors*2/wordsize).map(x => Cat(twobit_headers.slice(twobits_per_word*x, twobits_per_word*(x+1))))
 
     // Reduce full sized headers together
-    val header_reduction = Module(new Reduction(ncompressors, 1, headerwidth, 0, false))
+    val header_reduction = Module(new Reduction(ncompressors, 1, headerwidth, 0))
     for (i <- 0 until ncompressors) {
         header_reduction.io.in(i)(0) := io.headerin(i)
         header_reduction.io.inlengths(i) := io.headerin(i) >= 2.U
@@ -59,12 +59,12 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
     }
 
     // Reduce data
-    val data_reduction = Module(new Reduction(ncompressors, nwords, wordsize, maxblocks, true))
+    val data_reduction = Module(new Reduction(ncompressors, nwords, wordsize, maxblocks))
     data_reduction.io.in := io.datain
     data_reduction.io.inlengths := io.headerin
 
     // Merge everything together
-    val header_data_merger = Module(new MergeStaged(wordsize, headers_wordsize.size, ncompressors*nwords, 0))
+    val header_data_merger = Module(new MergeStaged(wordsize, headers_wordsize.size, ncompressors*nwords, 0, 0))
     header_data_merger.io.data1 := headers_wordsize
     header_data_merger.io.len1 := (header_reduction.io.outlength*headerwidth.U +& (wordsize-1).U) / wordsize.U
     header_data_merger.io.data2 := data_reduction.io.out

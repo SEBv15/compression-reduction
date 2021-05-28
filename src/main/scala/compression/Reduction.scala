@@ -19,10 +19,8 @@ import scala.math.pow
  *  @param numblocks The length of each input vector
  *  @param blockwidth The size of the UInt in the vector
  *  @param maxblocks The maximum number of blocks/elements/words any merge stage should have as input (0 = no limit)
- *  @param merge_weird Whether to use the MergeWeird module or the regular Merge
- *  @param register_output Put a register between the reduced data and the output wire
  */
-class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int = 16, val maxblocks:Int = 128, val merge_weird:Boolean = true, register_output:Boolean = false) extends Module {
+class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int = 16, val maxblocks:Int = 128) extends Module {
     require(isPow2(ninputs))
     require(ninputs > 0)
     require(numblocks > 0)
@@ -37,7 +35,7 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
     })
 
     // Make the first stage of mergers
-    val stage1 = ListBuffer.fill(ninputs/2)(Module(new MergeStaged(blockwidth, numblocks, numblocks, 0)))
+    val stage1 = ListBuffer.fill(ninputs/2)(Module(new MergeStaged(blockwidth, numblocks, numblocks, 0, 0)))
     for (i <- 0 until ninputs/2) {
         stage1(i).io.len1 := io.inlengths(2*i)
         stage1(i).io.len2 := io.inlengths(2*i+1)
@@ -60,7 +58,7 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
             nb /= 2;
             merge = true;
         }
-        stages.append(ListBuffer.fill(ninputs/pow(2, n+1).toInt)(Module(new MergeStaged(blockwidth*div, numblocks*pow(2, n).toInt/div, numblocks*pow(2, n).toInt/div, 0))))
+        stages.append(ListBuffer.fill(ninputs/pow(2, n+1).toInt)(Module(new MergeStaged(blockwidth*div, numblocks*pow(2, n).toInt/div, numblocks*pow(2, n).toInt/div, 0, 0))))
 
         // If number of blocks needs to be divided, group two inputs together before feeding it into the next stage
         if (merge) {
@@ -81,23 +79,9 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
         nb *= 2;
     }
 
-    if (register_output) {
-        val data_uint = stages(stages.length - 1)(0).io.out.asUInt()
-        val out = Wire(Vec(ninputs*numblocks, UInt(blockwidth.W)))
-        out := (0 until ninputs*numblocks).map(x => data_uint(blockwidth*(x + 1) - 1, blockwidth*x))
-        val out_reg = List.fill(ninputs*numblocks)(RegInit(0.U(blockwidth.W)))
-        for (i <- 0 until out_reg.length) {
-            out_reg(i) := out(i)
-            io.out(i) := out_reg(i)
-        }
-        val outlength_reg = RegInit(0.U((log2Floor(ninputs*numblocks) + 1).W))
-        outlength_reg := stages(stages.length - 1)(0).io.outlen * div.U
-        io.outlength := outlength_reg
-    } else {
-        val data_uint = stages(stages.length - 1)(0).io.out.asUInt()
-        io.out := (0 until ninputs*numblocks).map(x => data_uint(blockwidth*(x + 1) - 1, blockwidth*x))
-        io.outlength := stages(stages.length - 1)(0).io.outlen * div.U
-    }
+    val data_uint = stages(stages.length - 1)(0).io.out.asUInt()
+    io.out := (0 until ninputs*numblocks).map(x => data_uint(blockwidth*(x + 1) - 1, blockwidth*x))
+    io.outlength := stages(stages.length - 1)(0).io.outlen * div.U
 }
 
 object Reduction extends App {
