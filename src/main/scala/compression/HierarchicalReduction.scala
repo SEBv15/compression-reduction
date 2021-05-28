@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Takes in compressor output, reduces the data, and calculates the hierarchical headers. The output is the final data (before adding metadata).
  *  The output will look like this
@@ -74,5 +75,8 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
 }
 
 object HierarchicalReduction extends App {
-    chisel3.Driver.execute(args, () => new HierarchicalReduction)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new HierarchicalReduction))
+    )
 }

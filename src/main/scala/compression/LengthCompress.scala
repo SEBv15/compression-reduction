@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Lossy encode pixel value by adjusting the resolution based on the poisson noise.
  *
@@ -33,5 +34,8 @@ class LengthCompress(val npixels:Int = 16, val pixelsize:Int = 10) extends Modul
 }
 
 object LengthCompress extends App {
-    chisel3.Driver.execute(args, () => new LengthCompress)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new LengthCompress))
+    )
 }

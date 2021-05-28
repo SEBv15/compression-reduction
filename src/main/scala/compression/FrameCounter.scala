@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Keeps track of the frame number and whether the first sync pulse was received based on the sync pulse and data valid input.
  *
@@ -63,6 +64,9 @@ class FrameCounter(val counterwidth: Int = 16) extends Module {
     io.received_first_sync := received_first_sync
 }
 
-object FrameCounter extends App {
-    chisel3.Driver.execute(args, () => new FrameCounter)
+object FrameCounter extends App {    
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new FrameCounter))
+    )
 }

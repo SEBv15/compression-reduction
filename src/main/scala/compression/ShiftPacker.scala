@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 import scala.math.max
 
@@ -164,5 +165,8 @@ class ShiftPacker(val inbits:Int = 64*10*16 + 64*6, val wordsize:Int = 64, val r
 }
 
 object ShiftPacker extends App {
-    chisel3.Driver.execute(args, () => new ShiftPacker)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new ShiftPacker))
+    )
 }

@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Inserts metadata at the end of every block where there is room
  *
@@ -33,5 +34,8 @@ class InsertEndMetadata(val inbits: Int = 1024*11, val wordsize: Int = 64, val r
 }
 
 object InsertEndMetadata extends App {
-    chisel3.Driver.execute(args, () => new InsertEndMetadata)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new InsertEndMetadata))
+    )
 }

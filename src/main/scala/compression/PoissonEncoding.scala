@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 import scala.math.pow
 import scala.math.max
@@ -32,5 +33,8 @@ class PoissonEncoding extends Module {
 }
 
 object PoissonEncoding extends App {
-    chisel3.Driver.execute(args, () => new PoissonEncoding)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new PoissonEncoding))
+    )
 }

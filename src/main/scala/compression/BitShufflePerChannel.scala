@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._ 
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Shuffle bits between pixels to group bits by significance into "pixels".
  *
@@ -29,5 +30,8 @@ class BitShufflePerChannel(val nelems:Int = 16, val elemsize:Int = 10) extends M
 }
 
 object BitShufflePerChannel extends App {
-    chisel3.Driver.execute(args, () => new BitShufflePerChannel)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new BitShufflePerChannel))
+    )
 }

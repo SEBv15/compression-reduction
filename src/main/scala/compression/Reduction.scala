@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 import scala.collection.mutable.ListBuffer
 import scala.math.pow
@@ -100,5 +101,8 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
 }
 
 object Reduction extends App {
-    chisel3.Driver.execute(args, () => new Reduction)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new Reduction))
+    )
 }

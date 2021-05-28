@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Compression.
  *
@@ -123,5 +124,8 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 }
 
 object CompressionReduction extends App {
-    chisel3.Driver.execute(args, () => new CompressionReduction)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new CompressionReduction))
+    )
 }

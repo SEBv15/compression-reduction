@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 /** Purely combinational compression and reduction circuit that takes in the pixels, compresses them, and puts them into one continuous vector (with optional poisson encoding)
  *
@@ -73,5 +74,8 @@ class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int
 }
 
 object CompressionReductionNoPacking extends App {
-    chisel3.Driver.execute(args, () => new CompressionReductionNoPacking)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new CompressionReductionNoPacking))
+    )
 }

@@ -2,6 +2,7 @@ package compression
 
 import chisel3._
 import chisel3.util._
+import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
 import scala.math.min
 import scala.math.max
@@ -44,5 +45,8 @@ class MergeStage(val wordsize:Int = 16, val length:Int = 10, val shift:Int = 1, 
 }
 
 object MergeStage extends App {
-    chisel3.Driver.execute(args, () => new MergeStage)
+    (new chisel3.stage.ChiselStage).execute(
+        Array("-X", "verilog"),
+        Seq(ChiselGeneratorAnnotation(() => new MergeStage))
+    )
 }
