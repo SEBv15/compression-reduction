@@ -18,15 +18,20 @@ import scala.math.max
  *  @param inwords2 Number of elements for the second input vec
  *  @param minwords1 The minimum number of elements in the first vec
  *  @param maxoutwords The maximum num of output elements (0 = no limit)
+ *  @param granularity Round up any input lengths to be a multiple of this number
  */
-class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 100, val minwords1:Int = 0, val maxoutwords:Int = 0) extends Module {
+class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 100, val minwords1:Int = 0, val maxoutwords:Int = 0, val granularity:Int = 1) extends Module {
     require(wordsize > 0)
     require(inwords1 > 0)
     require(inwords2 > 0)
+    require(granularity > 0 && isPow2(granularity), "Granularity must be a positive power of two")
+    require(inwords1 % granularity == 0 && inwords2 % granularity == 0, "Max input lengths must be a multiple of the granularity")
     require(minwords1 >= 0)
     require(minwords1 < inwords1)
 
     val outwords = if (maxoutwords > 0) min(inwords1 + inwords2, maxoutwords) else inwords1 + inwords2
+
+    val gran_log = log2Floor(granularity)
 
     val io = IO(new Bundle {
         val len1 = Input(UInt((log2Floor(inwords1) + 1).W))
@@ -38,14 +43,14 @@ class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:In
     })
 
     // Number of bits needed to represent how much to the shift the second input
-    val shiftsize = log2Floor(inwords1 - minwords1)+1
+    val shiftsize = log2Floor(inwords1 - minwords1) + 1
 
     // Calculate how much the second input needs to be shifted to the left.
     // The bits in the number also correspond to which shift stages should be enabled.
     val shift = Wire(UInt(shiftsize.W))
     shift := inwords1.U - io.len1
 
-    val stages = Wire(Vec(shiftsize+1, Vec(inwords1 + inwords2, UInt(wordsize.W))))
+    val stages = Wire(Vec(shiftsize + 1 - gran_log, Vec(inwords1 + inwords2, UInt(wordsize.W))))
 
     // Set the first stage to be the input for the second vector
     for (i <- 0 until inwords1) {
@@ -58,16 +63,14 @@ class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:In
     // Go through the stages where each stage can shift the second input by l to the left.
     // ignore indicates how many elements at the start can't possibly have a value for each stage.
     // This is probably already optimized by chisel since it doesn't affect gate count.
-    var l = 1
-    var ignore = inwords1 - l
-    for (i <- 0 until shiftsize) {
-        val s = Module(new MergeStage(wordsize, inwords1 + inwords2, l, ignore))
+    var l = granularity
+    for (i <- 0 until shiftsize - gran_log) {
+        val s = Module(new MergeStage(wordsize, inwords1 + inwords2, l))
         s.io.in := stages(i)
         stages(i+1) := s.io.out
-        s.io.enable := shift(i)
+        s.io.enable := shift(i + gran_log)
 
         l *= 2
-        ignore -= l
     }
 
     // Assign the values to the output from the correct input
@@ -75,14 +78,22 @@ class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:In
         when (i.U < io.len1) {
             io.out(i) := io.data1(i)
         }.otherwise {
-            io.out(i) := stages(shiftsize)(i)
+            io.out(i) := stages(stages.length - 1)(i)
         }
     }
     for (i <- inwords1 until outwords) {
-        io.out(i) := stages(shiftsize)(i)
+        io.out(i) := stages(stages.length - 1)(i)
     }
 
-    io.outlen := io.len1 +& io.len2
+    if (granularity > 1) {
+        // Make the input lengths be a multiple of the granularity
+        val padded1 = Cat((io.len1 +& (granularity-1).U)(log2Floor(inwords1), gran_log), 0.U(gran_log.W))
+        val padded2 = Cat((io.len2 +& (granularity-1).U)(log2Floor(inwords2), gran_log), 0.U(gran_log.W))
+
+        io.outlen := padded1 +& padded2
+    } else {
+        io.outlen := io.len1 +& io.len2
+    }
 }
 
 object MergeStaged extends App {
