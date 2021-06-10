@@ -111,14 +111,14 @@ object testUtils {
      *
      *  @return The data from the blocks as a list of blocksize wide words
      */
-    def blocksToData(blocks: Array[BigInt], blocksize: Int = 16): Array[BigInt] = {
+    def blocksToData(blocks: Array[BigInt], blocksize: Int = 16, headersize: Int = 8): Array[BigInt] = {
         var data: BigInt = 0
         var big_one: BigInt = 1
         var len = 0
         for (block <- blocks) {
-            data <<= 1024-8
-            data += block & ((big_one << 1024-8)-1)
-            len += 1024-8
+            data <<= 1024-headersize
+            data += block & ((big_one << (1024-headersize))-1)
+            len += 1024-headersize
         }
         data >>= len % blocksize
         len -= len % blocksize
