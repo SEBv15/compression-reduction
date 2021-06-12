@@ -143,7 +143,7 @@ class ContinuousPacker(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int = 16,
     for (i <- 0 until numblocks) {
         // block without first bit
         val outdata = Cat(data_positions(i), merger_out_uint((numblocks - i)*(1024 - headerbits) - 1, (numblocks - i - 1)*(1024 - headerbits)))
-        io.out(i) := Cat(outdata.xorR(), outdata)
+        io.out(i) := Cat(!outdata.xorR(), outdata)
     }
 }
 

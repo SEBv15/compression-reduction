@@ -88,7 +88,7 @@ class ContinuousPackerTest extends FlatSpec with ChiselScalatestTester with Matc
                         for (i <- 0 until 1024) {
                             xor ^= ((block >> i) & 1).toInt
                         }
-                        assert(xor == 0, "Block did not have an even parity")
+                        assert(xor == 1, "Block did not have an odd parity")
                     }
                     val out = blocksToData(blocks, 16)
                     assert(out.length == 1016, "Incorrect output length???")
