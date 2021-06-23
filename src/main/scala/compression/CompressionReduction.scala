@@ -15,6 +15,8 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 0) extends Module {
 
     val big_one: BigInt = 1
+    val reduction_bits: Int = pixel_rows * pixel_cols / 16 * 6 + pixel_rows * pixel_cols * 10
+    val numblocks: Int = (reduction_bits + (1024 - 16 - 1)) / (1024 - 16)
 
     val io = IO(new Bundle {
         // The raw 10-bit pixel data from a single shift (128x8 pixels).
@@ -45,10 +47,10 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
         // When compressing, this will be the compressed data from multiple shifts merged together, formatted into 1024-bit words to fit the FIFO.
         // Otherwise it will be the raw pixel data row by row.
-        val blocks = Output(Vec(11, UInt(1024.W)))
+        val blocks = Output(Vec(numblocks, UInt(1024.W)))
 
         // Number of blocks used (max = 10).
-        val blocks_used = Output(UInt(4.W))
+        val blocks_used = Output(UInt((log2Floor(numblocks) + 1).W))
 
         // Whether the data in the blocks output should be written to the FIFO.
         // This should never be high when the FIFO is full because of the fifo_full input.
@@ -73,18 +75,14 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     compressor.io.pixels := io.pixels
     compressor.io.poisson := io.poisson
 
-    // Group the output into 64-bit blocks
-    val padded_compressor_out = compressor.io.out :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U :+ ((1 << 16) - 1).U
-    val compressed_64 = (0 until compressor.io.out.size by 4).map(i => Cat(padded_compressor_out.slice(i, i+4)))
-
     // Pass the data through our merger / 2 block ensurer
-    val packer = Module(new ShiftPacker(pixel_rows/2*(10*16 + 6), 64, 8))
+    val packer = Module(new ContinuousPackerTight((reduction_bits + 15)/16, 16, numblocks))
     packer.io.soft_rst := io.soft_rst
     packer.io.poisson := io.poisson
-    packer.io.in := compressed_64
+    packer.io.in := compressor.io.out
     // Only send if the data is valid and we have received the first sync pulse
     when (io.data_valid && (received_first_sync || io.frame_sync) && ~io.soft_rst) {
-        packer.io.len := (compressor.io.outlen +& 3.U) / 4.U
+        packer.io.len := compressor.io.outlen
     }.otherwise {
         packer.io.len := 0.U
     }
@@ -92,22 +90,26 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     packer.io.fifo_full := io.fifo_full
 
     // Add a pipeline stage at the end
-    val data_reg = List.fill(11)(RegInit(((big_one << 1024)-1).U(1024.W)))
-    val blocks_used_reg = RegInit(0.U(4.W))
+    val data_reg = Reg(Vec(numblocks, UInt(1024.W)))
+    val blocks_used_reg = RegInit(0.U((log2Floor(numblocks)+1).W))
     val write_enable_reg = RegInit(0.B)
     val data_dropped_reg = RegInit(0.B)
 
     // Implement the bypass feature
     when (io.bypass_compression) {
-        for (i <- 0 until 10) {
-            data_reg(i) := Cat((0 until pixel_rows).map(j => Cat(io.pixels(j))))((10-i)*1024-1, (9-i)*1024)
+        val rawsize = pixel_rows * pixel_cols * 10
+        val rawUIntpadded = Cat(Cat((0 until pixel_rows).map(j => Cat(io.pixels(j)))), 0.U(1024.W))
+        for (i <- 0 until (rawsize + 1023) / 1024) {
+            data_reg(i) := rawUIntpadded(rawsize - 1024*(i - 1) - 1, rawsize - 1024*i)
         }
-        data_reg(10) := 0.U
-        blocks_used_reg := 10.U
+        for (i <- (rawsize + 1023) / 1024 until numblocks) {
+            data_reg(i) := 0.U
+        }
+        blocks_used_reg := ((rawsize + 1023) / 1024).U
         write_enable_reg := ~io.fifo_full && ~io.soft_rst
         data_dropped_reg := io.fifo_full
     }.otherwise {
-        for (i <- 0 until 11) {
+        for (i <- 0 until numblocks) {
             data_reg(i) := packer.io.out(i)
         }
         blocks_used_reg := packer.io.blocks_used
@@ -115,7 +117,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
         data_dropped_reg := packer.io.data_dropped
     }
 
-    for (i <- 0 until 11) {
+    for (i <- 0 until numblocks) {
         io.blocks(i) := data_reg(i)
     }
     io.blocks_used := blocks_used_reg

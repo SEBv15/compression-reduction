@@ -10,6 +10,7 @@ import scala.math.min
 
 import org.scalatest.Tag
 object UnitTestTag extends Tag("unitTest")
+object FullTestTag extends Tag("fullTest")
 
 import java.nio.file.Files
 import java.nio.file.Paths
@@ -72,10 +73,10 @@ object testUtils {
      *  Each frame is capped at a random number of bits so we see more variety in compression efficiency. 
      *  Also each 16-pixel block is capped by another random number of bits.
      */
-    def generate_pixels(r: Random) = {
-        var data = Array.fill(128)(Array.fill(8)(0))
+    def generate_pixels(r: Random, rows: Int = 128) = {
+        var data = Array.fill(rows)(Array.fill(8)(0))
         val framebits = r.nextInt(11)
-        for (i <- 0 until 128 by 2) {
+        for (i <- 0 until rows by 2) {
             val numbits = r.nextInt(framebits+1)
             for (j <- 0 until 2) {
                 for (k <- 0 until 8) {

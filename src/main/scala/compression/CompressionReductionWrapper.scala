@@ -13,6 +13,9 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
  */
 class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 0) extends Module {
+
+    val comp = Module(new CompressionReduction(pixel_rows, pixel_cols, maxblocks))
+
     val io = IO(new Bundle {
         val pixels = Input(UInt((pixel_rows*pixel_cols*10).W))
         val fifo_full = Input(Bool())
@@ -21,13 +24,12 @@ class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int =
         val frame_sync = Input(Bool())
         val data_valid = Input(Bool())
         val soft_rst = Input(Bool())
-        val blocks = Output(Vec(11, UInt(1024.W)))
-        val blocks_used = Output(UInt(4.W))
+        val blocks = Output(Vec(comp.numblocks, UInt(1024.W)))
+        val blocks_used = Output(UInt((log2Floor(comp.numblocks)+1).W))
         val write_enable = Output(Bool())
         val data_dropped = Output(Bool())
     })
 
-    val comp = Module(new CompressionReduction(pixel_rows, pixel_cols, maxblocks))
     for (i <- 0 until pixel_rows) {
         for (j <- 0 until pixel_cols) {
             comp.io.pixels(i)(j) := io.pixels(io.pixels.getWidth - 10*(i*pixel_cols+j) - 1, io.pixels.getWidth - 10*(i*pixel_cols+j+1))

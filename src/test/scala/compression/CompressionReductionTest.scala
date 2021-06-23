@@ -20,7 +20,6 @@ import scala.util.Random
 import testUtils._
 
 import org.scalatest.Tag
-object FullTestTag extends Tag("fullTest")
 
 /** Test the whole compression & reduction stage by giving it data and checking if what comes out is the same as what we inserted
  *  This doesn't test any metadata or how the shifts are merged. Just if the pixels are correct.
@@ -29,426 +28,176 @@ object FullTestTag extends Tag("fullTest")
  *  @author Sebastian Strempfer
  */
 class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    var pendings = new Queue[Int] // queue holds inserted pixels in row-major order
-    var pending_shifts = 0 // how many shifts are still in the queue (still buffering in the ensureblocks module or pipeline)
-    var num_shifts_received = 0 // Number of shifts that have been processed out of the compression block
-    val maxblocks = 0
+    val rows = 128
 
-    // read whether to use poisson from the environment variables
-    val poisson = scala.util.Properties.envOrElse("POISSON", "true").toBoolean
+    var pixel_q = new Queue[Array[Array[Int]]]
+
+    val poisson = scala.util.Properties.envOrElse("POISSON", "false").toBoolean
     var poissonString = ""
     if (poisson) poissonString = " (poisson)"
 
-    /** Inserts an array of pixels into the compression module
-     *
-     *  The valid parameter signals whether the data is valid and should therefore be added to the queue to check the output with
-     */
-    def test_pixels(c: CompressionReduction, pixels: Array[Array[Int]], valid: Boolean = true) = {
-        //println(("INSERTED",  pixels.map(_.mkString).mkString(" ")))
-        for (i <- 0 until 128) {
-            for (j <- 0 until 8) {
-                c.io.data_valid.poke(valid.B)
-                c.io.pixels(i)(j).poke(pixels(i)(j).U)
-                if (valid) {
-                    pendings.enqueue(pixels(i)(j))
-                }
-            }
-        }
-        pending_shifts += 1
-    }
-
-    /** Reads the blocks from the compression module and returns them as an array of bigints
-     */
-    def get_blocks(c: CompressionReduction, print: Boolean = true) = {
-        var blocks = new ArrayBuffer[BigInt]
-        if (c.io.write_enable.peek().litValue == 1) {
-            for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
-                var block = c.io.blocks(i).peek().litValue
-                blocks += block
-            }
-        }
-        if (blocks.length > 0 && print) {
-            val numshifts = (blocks(0) >> (1024-8)) & ((1 << 7)-1)
-            println("Received " + numshifts.toString() + " shift" + (if (numshifts == 1) "" else "s"))
-        }
-        blocks.toArray
-    }
-
-    /** Takes in the module output, reverses the entire compression (except for poisson encoding) and compares them to what is in the queue of inserted pixels.
-     *
-     *  This method doesn't have access to the compression module so if it can reverse the output to get back the original, it is guaranteed that the compression module output is usable.
-     */
-    def check_blocks(blocks: Array[BigInt], data_dropped: Boolean = false) {
-        if (blocks.length == 0) return;
-        val wlist = blocksToData(blocks, 16)
-        //println(("BLOCKS AS RECEIVED 2", wlist.mkString(" ")))
-        // Check the data in the blocks shift-by-shift
-        val nmerged = (blocks(0) >> (1024-8)) & ((1 << 7) - 1)
-        //println(nmerged)
-        check_shift(wlist, nmerged.toInt, data_dropped)
-    }
-
-    /** Reverses the first compressed frame it finds and checks it against the input. Remaining data gets passed back to the function.
-     */
-    def check_shift(shifti: Array[BigInt], nleft: Int, data_dropped: Boolean) {
-        var shift = shifti
-        //println("Shift", shift.mkString(" "))
-        // Since this function recursively calls itself to go through the shifts in the blocks, check for the base case where there is no data left.
-        if (shift.length == 0 || nleft == 0) {
-            return
-        }
-
-        if (shift.length < 24) {
-            val big_zero: BigInt = 0
-            shift = shift ++ Array.fill(24 - shift.length)(big_zero)
-        }
-
-        // Reverse the entire reduction and compression for the first shift in the data from the blocks
-        val (headers, num_4bits) = getHeaders(shift, 64, 4)
-        //println("HEADERS", headers.mkString(" "), num_3bits)
-
-        var datalen = calculateReductionOutputLength(headers, maxblocks, 10)
-        //println("DATA PRE-MERGER", shift.slice(0, datalen + 64*5/16).mkString(" "))
-        //datalen = 64
-        //val red_out = reverseMergeWeird(shift.slice(64*2/16, shift.length), (num_3bits*3 + 15)/16, datalen, 64*3/16)
-        //println("REDUCED", red_out.mkString(" "))
-
-        var datastart = 64*2/16 + (num_4bits * 4 + 15)/16
-        val data = reverseReduction(shift.slice(datastart, datalen + datastart), headers, maxblocks, 10)
-        //println("DATA", data.mkString(" "))
-
-        //println("Headers", headers.mkString(" "))
-        //println("Data", data.mkString(" "))
-
-        val pixels = deshuffle(headers, data, 10)
-
-        //println("Pixels", (0 until pixels.length).map(i => pixels(i).mkString(" ")))
-
-        // Check against what we have in the queue
-        compare_data(pixels, data_dropped, nleft)
-
-        // Do the same for the set of data after this one
-        val num_header_blocks = 8 + (num_4bits*4 + 15)/16
-        datalen += num_header_blocks
-        datalen += (4 - (datalen % 4)) % 4
-        shift = shift.slice(((datalen + 3)/4)*4, shift.length)
-        check_shift(shift, nleft-1, data_dropped)
-    }
-
-    /** Takes in the reversed pixels and compares them against what is in the queue.
-     * 
-     *  If search is true, it will look through the frames in the pendings queue until it finds one that matches or runs out of frames (which will throw an error).
-     */
-    def compare_data(pixels: Array[Array[Int]], search: Boolean = false, nleft: Int = 0) {
-        num_shifts_received += 1
-        //println("Checking shift", num_shifts_received)
-        //println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
-        var matches: Boolean = true
-        var skipped: Int = -1
-
-        var inserted_pixels = Array.fill(128)(Array.fill(8)(0))
-        do {
-            if (pendings.isEmpty) {
-                throw new Exception("Reached the end of the queue")
-            }
-
-            for (i <- 0 until 128) {
-                for (j <- 0 until 8) {
-                    inserted_pixels(i)(j) = pendings.dequeue
-                }
-            }
-
-            matches = true
-            for (i <- 0 until 128) {
-                for (j <- 0 until 8) {
-                    if (poisson) {
-                        if (poissonEncode(inserted_pixels(i)(j)) != pixels(i)(j)) {
-                            matches = false
-                        }
-                    } else {
-                        if (inserted_pixels(i)(j) != pixels(i)(j)) {
-                            matches = false
-                        }
+    def insert_pixels(c: CompressionReduction, pixels: Array[Array[Int]]) {
+        val ordered = new ListBuffer[Int]
+        for (i <- 0 until pixels.length by 4) {
+            for (j <- 0 until 8 by 4) {
+                for (k <- 0 until 4) {
+                    for (l <- 0 until 4) {
+                        c.io.pixels(i+k)(j+l).poke(pixels(i+k)(j+l).U)
+                        ordered += pixels(i+k)(j+l)
                     }
                 }
             }
-            pending_shifts -= 1
-            skipped += 1
-        } while (!matches && search)
+        }
+        //println(ordered.toList)
+        pixel_q += pixels
+    }
 
-        if (skipped > 0) {
-            println("skipped " + skipped + " shifts")
+    def get_headers(data: List[Int]) : (List[Int], Int) = {
+        //val l2bits = (0 until rows / 16).map(i => (0 until 8).map(j => ((ihave(i) >> (14 - 2*j)) & 3).toInt)).flatten
+        println(ihave.slice(0, 8))
+        val l2bits = ListBuffer.empty[Int]
+        for (i <- 0 until rows / 16) {
+            for (j <- 0 until 8) {
+                l2bits += ((data(i) >> (14 - 2*j)) & 3).toInt
+            }
+        }
+        println(l2bits)
+        val l4bits = ListBuffer.empty[Int]
+        var i4 = 0
+        for (i <- 0 until l2bits.length) {
+            if (l2bits(i) == 3) {
+                l4bits += ((data(rows / 16 + i4/4) >> (12 - 4*(i4 % 4))) & 15).toInt
+                i4 += 1
+            } else {
+                l4bits += l2bits(i)
+            }
         }
 
-        if (!matches) {
-            println(pending_shifts)
-            println(nleft)
-            println(("CHECKING", pixels.map(_.mkString).mkString(" ")))
-            println(("SHOULD BE", inserted_pixels.map(_.mkString).mkString(" ")))
-            println(("SHOULD BE (POISSONED)", inserted_pixels.map(a => a.map(poissonEncode(_))).map(_.mkString).mkString(" ")))
+        return (l4bits.toList, i4)
+    }
+
+    var missing = 0
+    var ihave = List.empty[Int]
+    def check_block(block: BigInt) {
+        println("CHECKING")
+        val poisson = (block >> 1022) & 1
+        val pos = (block >> 1016) & 63
+        val frame_num = (block >> 1008) & 255
+        val data = (0 until 63).map(i => ((block >> 16*(62 - i)) & ((1 << 16) - 1)).toInt)
+
+        var xor = 0
+        for (i <- 0 until 1024) {
+            xor ^= ((block >> i) & 1).toInt
         }
-        assert(matches)
-        //println(if (flag) "MATCHES!!!" else  "DOESN'T MATCH!!!")
+        assert(xor == 1, "Block did not have an odd parity")
+
+        assert((pos == 63 && missing >= 63) || pos == missing || missing == -1, "Given shift position did not match")
+        
+        missing = 0
+        ihave = ihave ++ data
+        var first = true
+        try {
+            while (missing == 0 && ihave.length > 0) {
+                val (l4bits, i4) = get_headers(ihave)
+
+                println(l4bits)
+                println(i4)
+
+                val datlen = l4bits.reduce((a, b) => a + b)
+                val metalen = rows/16 + (i4 + 3)/4
+                val totlen = metalen + datlen
+                if (ihave.length < totlen) {
+                    missing = totlen - ihave.length
+                } else {
+                    val shuffled = Array.fill(rows * 8 / 16)(Array.fill(10)(0))
+
+                    var idx = metalen;
+                    for (i <- 0 until shuffled.length) {
+                        for (j <- 0 until l4bits(i)) {
+                            shuffled(i)(j) = ihave(idx)
+                            idx += 1
+                        }
+                    }
+
+                    val pixels = Array.ofDim[Int](rows, 8)
+                    for (i <- 0 until shuffled.length) {
+                        val pix = Array.fill(16)(0)
+                        for (j <- 0 until 10) {
+                            for (k <- 0 until 16) {
+                                pix(k) <<= 1
+                                pix(k) += shuffled(i)(9 - j) & (1 << k)
+                            }
+                        }
+
+                        for (j <- 0 until 16) {
+                            pixels(i / 2 + j / 4)(i % 2 + (j % 4)) = pix(j)
+                        }
+                    }
+
+                    val ref = pixel_q.dequeue
+                    for (i <- 0 until rows) {
+                        for (j <- 0 until 8) {
+                            assert(ref(i)(j) == pixels(i)(j), "Pixels did not match")
+                        }
+                    }
+                    print("MATCHED")
+
+                    ihave = ihave.slice(totlen, ihave.length)
+                    /*try {
+                        val (n4bits, ni4) = get_headers(ihave)
+                        missing = rows / 16 + (ni4 + 3) / 4 + n4bits.reduce((a, b) => a + b) - ihave.length
+                        if (missing < 0) missing = 0
+                    } catch {
+                        case _ : Exception => { missing = -1 }
+                    }*/
+                }
+            }
+        } catch {
+            case _ : Exception => { missing = -1 }
+        }
     }
 
     it should "test with random data" + poissonString taggedAs FullTestTag in {
-        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            for (i <- 0 until 128) {
-                for (j <- 0 until 8) {
-                    c.io.pixels(i)(j).poke(10.U)
-                }
-            }
-            c.io.poisson.poke(poisson.B)
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(0.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
-
-            c.io.frame_sync.poke(1.B)
-            c.clock.step()
-            c.io.frame_sync.poke(0.B)
-
-            c.io.data_valid.poke(1.B)
-
+        test(new CompressionReduction(rows, 8)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val r = new Random(1)
 
-            var data_dropped = false
-            for (i <- 0 until 15) {
-                // Get random pixels
-                val data = generate_pixels(r)
-                // for (j <- 0 until 128) {
-                //     for (k <- 0 until 8) {
-                //         data(j)(k) = i+1
-                //     }
-                // }
-                val valid = i != 5 // skip the fifth frame to test data_valid
+            println(c.numblocks)
 
-                val fifo_full = r.nextInt(5) == 0
-                c.io.fifo_full.poke(fifo_full.B)
+            val poisson = false
 
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, valid)
-
-                if (c.io.data_dropped.peek().litValue == 1) data_dropped = true
-
-                // Get the output from the module
-                val blocks = get_blocks(c)
-                check_blocks(blocks, data_dropped)
-
-                if (blocks.length > 0) data_dropped = false
-
-                c.clock.step()
-            }
-
-            println("Soft Reset")
-            // soft reset
-            c.io.soft_rst.poke(1.B)
-            c.clock.step()
-            c.clock.step()
-            c.io.soft_rst.poke(0.B)
-            pendings.clear()
-
-            // frame sync
-            c.io.frame_sync.poke(1.B)
-            c.io.data_valid.poke(0.B)
-            c.clock.step()
-            c.io.frame_sync.poke(0.B)
-
-            for (i <- 0 until 200) {
-                val data = generate_pixels(r)
-
-                val valid = r.nextInt(5) != 0
-                test_pixels(c, data, valid)
-
-                val fifo_full = r.nextInt(5) == 0
-                c.io.fifo_full.poke(fifo_full.B)
-
-                if (c.io.data_dropped.peek().litValue == 1) data_dropped = true
-
-                val blocks = get_blocks(c)
-                check_blocks(blocks, data_dropped)
-
-                if (blocks.length > 0) data_dropped = false
-
-                c.clock.step()
-            }
-        }
-    }
-
-    it should "test with all zeros" + poissonString taggedAs FullTestTag in {
-        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            pendings.clear()
-            for (i <- 0 until 128) {
+            for (i <- 0 until rows) {
                 for (j <- 0 until 8) {
                     c.io.pixels(i)(j).poke(0.U)
                 }
             }
-            c.io.poisson.poke(poisson.B)
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(0.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
 
+            c.io.fifo_full.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.poisson.poke(poisson.B)
+            c.io.data_valid.poke(0.B)
             c.io.frame_sync.poke(1.B)
             c.clock.step()
-            c.io.frame_sync.poke(0.B)
-
             c.io.data_valid.poke(1.B)
-
-            val r = new Random(1)
-
-            for (i <- 0 until 160) {
-                // Get random pixels
-                val data = Array.fill(128)(Array.fill(8)(0))
-
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, true)
-
-                // Get the output from the module
-                val blocks = get_blocks(c)
-                check_blocks(blocks)
-
-                c.clock.step()
-            }
-        }
-    }
-
-    it should "test with all ones" + poissonString taggedAs FullTestTag in {
-        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            pendings.clear()
-            for (i <- 0 until 128) {
-                for (j <- 0 until 8) {
-                    c.io.pixels(i)(j).poke(0.U)
-                }
-            }
-            c.io.poisson.poke(poisson.B)
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(0.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
-
-            c.io.frame_sync.poke(1.B)
-            c.clock.step()
             c.io.frame_sync.poke(0.B)
 
-            c.io.data_valid.poke(1.B)
+            for (n <- 0 until 100) {
+                val pixels = generate_pixels(r, rows)
+                //println(pixels.map(_.mkString(" ")).mkString("\n"))
+                println("Inserted")
+                insert_pixels(c, pixels)
 
-            val r = new Random(1)
+                if (c.io.write_enable.peek().litValue == 1) {
+                    val numblocks = c.io.blocks_used.peek().litValue.toInt
+                    println("Got " + numblocks + " blocks")
 
-            for (i <- 0 until 25) {
-                // Get random pixels
-                val data = Array.fill(128)(Array.fill(8)((1 << 10) - 1))
-
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, data, true)
-
-                // Get the output from the module
-                val blocks = get_blocks(c)
-                check_blocks(blocks)
-
-                c.clock.step()
-            }
-        }
-    }
-
-    it should "test compression bypass" + poissonString taggedAs FullTestTag in {
-        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            pendings.clear()
-            c.io.poisson.poke(poisson.B)
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(1.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
-
-            val r = new Random(1)
-
-            for (i <- 0 until 25) {
-                // Get random pixels
-                val pixels = generate_pixels(r)
-
-                // Insert the pixels into the CompressionReduction module (also adds them to a queue which the output will be checked against)
-                test_pixels(c, pixels, true)
-
-                // fifo full signal really only affects the write enable and data dropped output
-                val fifofull = (i % 4) == 0
-                c.io.fifo_full.poke(fifofull.B)
-
-                c.clock.step()
-
-                c.io.blocks_used.expect(10.U)
-                c.io.write_enable.expect((!fifofull).B)
-                c.io.data_dropped.expect(fifofull.B)
-
-                // Get the output from the module
-                var data: BigInt = 0
-                for (i <- 0 until 10) {
-                    data <<= 1024
-                    data += c.io.blocks(i).peek().litValue
-                }
-                val pixelso = Array.fill(128)(Array.fill(8)(0))
-                for (i <- 0 until 128*8) {
-                    pixelso(i / 8)(i % 8) = ((data >> (10*(128*8 - 1 - i))) & ((1 << 10) - 1)).intValue()
-                    assert(pendings.dequeue == pixelso(i / 8)(i % 8))
-                }
-            }
-        }
-    }
-
-    it should "test with real data" + poissonString in {
-        test(new CompressionReduction(128, 8, maxblocks)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
-            val frames = load_data_file("python-simulation/data/ptychography.bin")
-
-            pendings.clear()
-            num_shifts_received = 0
-
-            c.io.poisson.poke(poisson.B)
-            c.io.fifo_full.poke(0.B)
-            c.io.bypass_compression.poke(0.B)
-            c.io.frame_sync.poke(0.B)
-            c.io.data_valid.poke(0.B)
-            c.io.soft_rst.poke(0.B)
-
-            c.io.frame_sync.poke(1.B)
-            c.clock.step()
-            c.io.frame_sync.poke(0.B)
-
-            c.io.data_valid.poke(1.B)
-
-            var bits_received = 1
-            var bits_processed = 0
-
-            var s = true
-            for (i <- 0 until frames.length) {
-                for (j <- 0 until 16) {
-                    //if (s && j < 6) {
-                    //} else {
-                    //    s = false
-                    val pixels = Array.fill(128)(Array.fill(8)(0))
-                    for (k <- 0 until 128) {
-                        for (l <- 0 until 8) {
-                            pixels(k)(l) = frames(i)(k)(l+j*8)
-                        }
+                    val blocks = new Array[BigInt](numblocks)
+                    for (i <- 0 until numblocks) {
+                        check_block(c.io.blocks(i).peek().litValue)
                     }
-
-                    test_pixels(c, pixels, true)
-
-                    val blocks = get_blocks(c)
-                    check_blocks(blocks)
-
-                    bits_received += blocks.length * 1024
-                    bits_processed = num_shifts_received * 128*8*10
-
-                    if (bits_received > 0) {
-                        println("Compression Ratio", bits_processed.toDouble/bits_received, " - ", i*100/frames.length, "percent", i, j)
-                    }
-
-                    c.clock.step()
-                    //}
                 }
+
+                c.clock.step()
             }
         }
     }

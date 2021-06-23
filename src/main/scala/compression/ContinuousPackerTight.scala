@@ -75,14 +75,18 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
         }
     }.otherwise {
         // If this is the first shift starting in that block, update the position
-        when (data_positions_reg(starts_in_block) === 63.U) {
-            data_positions_reg(starts_in_block) := pos_in_block
+        for (i <- 0 until numblocks) {
+            when (starts_in_block === i.U && data_positions_reg(i) === 63.U) {
+                data_positions_reg(i) := pos_in_block
+            }
         }
     }
 
     // update frame num for block if it is the first block
-    when (data_positions_reg(starts_in_block) === 63.U) {
-        frame_nums_reg(starts_in_block) := io.frame_num
+    for (i <- 0 until numblocks) {
+        when (starts_in_block === i.U && data_positions_reg(i) === 63.U) {
+            frame_nums_reg(i) := io.frame_num
+        }
     }
 
     // Create data_positions that include the shift that triggers the write
@@ -135,7 +139,7 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
     io.write_enable := next_block && !io.soft_rst && !io.fifo_full
 
     // We always fill up all of them
-    io.blocks_used := 16.U
+    io.blocks_used := numblocks.U
 
     val merger_out_uint = Cat(merger.io.out.slice(0, reg_size))
     for (i <- 0 until numblocks) {

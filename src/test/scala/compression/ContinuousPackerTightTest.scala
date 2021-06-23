@@ -31,7 +31,7 @@ class ContinuousPackerTightTest extends FlatSpec with ChiselScalatestTester with
     val maxwords = 64*10 + 64*6/16
 
     it should "test ContinuousPackerTight with random data" taggedAs UnitTestTag in {
-        test(new ContinuousPackerTight) { c =>
+        test(new ContinuousPackerTight).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             c.io.fifo_full.poke(0.B)
             c.io.poisson.poke(0.B)
             c.io.soft_rst.poke(0.B)
