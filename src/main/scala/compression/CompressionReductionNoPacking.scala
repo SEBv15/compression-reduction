@@ -16,7 +16,7 @@ class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int
     require(isPow2(pixel_rows))
     require(isPow2(pixel_cols))
     require(pixel_cols == 8)
-    require(pixel_rows >= 4)
+    require(pixel_rows >= 16)
 
     val big_one: BigInt = 1
     val outwords = (pixel_rows/2*6+pixel_rows*8*10)/16
