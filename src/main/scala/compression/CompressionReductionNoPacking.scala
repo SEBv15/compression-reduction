@@ -19,7 +19,7 @@ class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int
     require(pixel_rows >= 4)
 
     val big_one: BigInt = 1
-    val outwords = (64*6+128*8*10)/16
+    val outwords = (pixel_rows/2*6+pixel_rows*8*10)/16
 
     val io = IO(new Bundle {
         // The raw 10-bit pixel data from a single shift (128x8 pixels).
