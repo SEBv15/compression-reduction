@@ -34,11 +34,11 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
         val outlen = Output(UInt((log2Floor(outsize) + 1).W))
     })
 
-    // Make 2-bit headers. Reserve value 3 as undefined
+    // Make 2-bit headers
     val twobit_headers = Wire(Vec(ncompressors, UInt(2.W)))
     for (i <- 0 until ncompressors) {
-        when (io.headerin(i) >= 2.U) {
-            twobit_headers(i) := 2.U
+        when (io.headerin(i) >= 3.U) {
+            twobit_headers(i) := 3.U
         }.otherwise {
             twobit_headers(i) := io.headerin(i)
         }
@@ -50,7 +50,7 @@ class HierarchicalReduction(val ncompressors:Int = 64, val nwords:Int = 7, val w
     val header_reduction = Module(new Reduction(ncompressors, 1, headerwidth, 0))
     for (i <- 0 until ncompressors) {
         header_reduction.io.in(i)(0) := io.headerin(i)
-        header_reduction.io.inlengths(i) := io.headerin(i) >= 2.U
+        header_reduction.io.inlengths(i) := io.headerin(i) >= 3.U
     }
     val header_uint = Cat(Cat(header_reduction.io.out), ((big_one << wordsize) - 1).U(wordsize.W))
     val headers_wordsize = Wire(Vec((ncompressors*headerwidth + wordsize-1)/wordsize, UInt(wordsize.W)))
