@@ -306,7 +306,7 @@ object testUtils {
         var i3 = 0
         var headers = new Array[Int](ncompressors)
         for (i <- 0 until ncompressors) {
-            if (twobit_headers(i) < 2) {
+            if (twobit_headers(i) < 3) {
                 headers(i) = twobit_headers(i).toInt
             } else {
                 headers(i) = threebit_headers(i3).toInt

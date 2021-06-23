@@ -18,6 +18,8 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     val reduction_bits: Int = pixel_rows * pixel_cols / 16 * 6 + pixel_rows * pixel_cols * 10
     val numblocks: Int = (reduction_bits + (1024 - 16 - 1)) / (1024 - 16)
 
+    println("Using " + pixel_rows + " pixel rows")
+
     val io = IO(new Bundle {
         // The raw 10-bit pixel data from a single shift (128x8 pixels).
         val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(10.W))))
@@ -126,8 +128,10 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 }
 
 object CompressionReduction extends App {
+    val rows = scala.util.Properties.envOrElse("ROWS", "128").toInt
+
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new CompressionReduction))
+        Seq(ChiselGeneratorAnnotation(() => new CompressionReduction(pixel_rows = rows)))
     )
 }
