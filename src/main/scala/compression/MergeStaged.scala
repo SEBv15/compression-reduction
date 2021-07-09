@@ -94,6 +94,8 @@ class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:In
     } else {
         io.outlen := io.len1 +& io.len2
     }
+
+    override def desiredName = s"MergeStaged_$inwords1"
 }
 
 object MergeStaged extends App {

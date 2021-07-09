@@ -42,6 +42,8 @@ class MergeStage(val wordsize:Int = 16, val length:Int = 10, val shift:Int = 1, 
     for (i <- (length - shift) until length) {
         io.out(i) := io.in(i)
     }
+
+    override def desiredName = s"MergeStage_${length}_by_${shift}"
 }
 
 object MergeStage extends App {

@@ -82,6 +82,8 @@ class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int
     val data_uint = stages(stages.length - 1)(0).io.out.asUInt()
     io.out := (0 until ninputs*numblocks).map(x => data_uint(blockwidth*(x + 1) - 1, blockwidth*x))
     io.outlength := stages(stages.length - 1)(0).io.outlen * div.U
+
+    override def desiredName = s"Reduction_${ninputs}x$numblocks"
 }
 
 object Reduction extends App {

@@ -27,6 +27,8 @@ class BitShufflePerChannel(val nelems:Int = 16, val elemsize:Int = 10) extends M
         }
         io.out(i) := Reverse(Cat(tmp))
     }
+
+    override def desiredName = "BitShuffle"
 }
 
 object BitShufflePerChannel extends App {
