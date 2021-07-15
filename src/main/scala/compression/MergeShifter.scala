@@ -17,7 +17,7 @@ import scala.math.max
  *  @param shift How much the elements should be shifted to the left if enable is true
  *  @param ignore How many elements at the start of the vector to ignore (simply pass through)
  */
-class MergeStage(val wordsize:Int = 16, val length:Int = 10, val shift:Int = 1, var ignore:Int = 0) extends Module {
+class MergeShifter(wordsize:Int = 16, length:Int = 10, shift:Int = 1, var ignore:Int = 0) extends Module {
     require(wordsize > 0)
     require(shift < length)
     require(shift > 0)
@@ -43,12 +43,12 @@ class MergeStage(val wordsize:Int = 16, val length:Int = 10, val shift:Int = 1, 
         io.out(i) := io.in(i)
     }
 
-    override def desiredName = s"MergeStage_${length}_by_${shift}"
+    override def desiredName = s"MergeShifter_${length}_by_${shift}"
 }
 
-object MergeStage extends App {
+object MergeShifter extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new MergeStage))
+        Seq(ChiselGeneratorAnnotation(() => new MergeShifter))
     )
 }

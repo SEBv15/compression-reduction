@@ -4,8 +4,7 @@ import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
-import scala.math.min
-import scala.math.max
+import scala.math.{min, max}
 
 /** Merge module which takes in two vecs of uints and their number of used elements, and outputs a single merged vec and its length. 
  *  Merges data by shifting the second input until there is no gap using ln(inwords1) stages.
@@ -20,7 +19,7 @@ import scala.math.max
  *  @param maxoutwords The maximum num of output elements (0 = no limit)
  *  @param granularity Round up any input lengths to be a multiple of this number
  */
-class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 100, val minwords1:Int = 0, val maxoutwords:Int = 0, val granularity:Int = 1) extends Module {
+class Merge(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 100, val minwords1:Int = 0, val maxoutwords:Int = 0, val granularity:Int = 1) extends Module {
     require(wordsize > 0)
     require(inwords1 > 0)
     require(inwords2 > 0)
@@ -34,73 +33,66 @@ class MergeStaged(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:In
     val gran_log = log2Floor(granularity)
 
     val io = IO(new Bundle {
-        val len1 = Input(UInt((log2Floor(inwords1) + 1).W))
-        val data1 = Input(Vec(inwords1, UInt(wordsize.W)))
-        val len2 = Input(UInt((log2Floor(inwords2) + 1).W))
-        val data2 = Input(Vec(inwords2, UInt(wordsize.W)))
-        val outlen = Output(UInt((log2Floor(outwords) + 1).W))
-        val out = Output(Vec(outwords, UInt(wordsize.W)))
+        val in1 = Input(new DynamicData(inwords1, elemsize = wordsize))
+        val in2 = Input(new DynamicData(inwords2, elemsize = wordsize))
+        val out = Output(new DynamicData(outwords, elemsize = wordsize))
     })
 
     // Number of bits needed to represent how much to the shift the second input
-    val shiftsize = log2Floor(inwords1 - minwords1) + 1
+    val shiftsize = log2Ceil(inwords1 - minwords1 + 1)
 
     // Calculate how much the second input needs to be shifted to the left.
     // The bits in the number also correspond to which shift stages should be enabled.
     val shift = Wire(UInt(shiftsize.W))
-    shift := inwords1.U - io.len1
+    shift := inwords1.U - io.in1.len
 
-    val stages = Wire(Vec(shiftsize + 1 - gran_log, Vec(inwords1 + inwords2, UInt(wordsize.W))))
+    // Generate the shift stages
+    val shifters = Seq.tabulate(shiftsize - gran_log)(i => Module(new MergeShifter(wordsize, inwords1 + inwords2, 1 << i + gran_log)).io)
 
-    // Set the first stage to be the input for the second vector
+    // Give the first stage the second set of data as input
     for (i <- 0 until inwords1) {
-        stages(0)(i) := 0.U
+        shifters(0).in(i) := 0.U
     }
     for (i <- 0 until inwords2) {
-        stages(0)(i+inwords1) := io.data2(i)
+        shifters(0).in(i + inwords1) := io.in2.data(i)
     }
 
-    // Go through the stages where each stage can shift the second input by l to the left.
-    // ignore indicates how many elements at the start can't possibly have a value for each stage.
-    // This is probably already optimized by chisel since it doesn't affect gate count.
-    var l = granularity
-    for (i <- 0 until shiftsize - gran_log) {
-        val s = Module(new MergeStage(wordsize, inwords1 + inwords2, l))
-        s.io.in := stages(i)
-        stages(i+1) := s.io.out
-        s.io.enable := shift(i + gran_log)
-
-        l *= 2
+    // connect the stages
+    for (i <- 0 until shifters.length) {
+        shifters(i).enable := shift(i + gran_log)
+    }
+    for (i <- 1 until shifters.length) {
+        shifters(i).in := shifters(i - 1).out
     }
 
     // Assign the values to the output from the correct input
     for (i <- 0 until min(inwords1, outwords)) {
-        when (i.U < io.len1) {
-            io.out(i) := io.data1(i)
+        when (i.U < io.in1.len) {
+            io.out.data(i) := io.in1.data(i)
         }.otherwise {
-            io.out(i) := stages(stages.length - 1)(i)
+            io.out.data(i) := shifters(shifters.length - 1).out(i)
         }
     }
     for (i <- inwords1 until outwords) {
-        io.out(i) := stages(stages.length - 1)(i)
+        io.out.data(i) := shifters(shifters.length - 1).out(i)
     }
 
     if (granularity > 1) {
         // Make the input lengths be a multiple of the granularity
-        val padded1 = Cat((io.len1 +& (granularity-1).U)(log2Floor(inwords1), gran_log), 0.U(gran_log.W))
-        val padded2 = Cat((io.len2 +& (granularity-1).U)(log2Floor(inwords2), gran_log), 0.U(gran_log.W))
+        val padded1 = Cat((io.in1.len +& (granularity-1).U)(log2Floor(inwords1), gran_log), 0.U(gran_log.W))
+        val padded2 = Cat((io.in2.len +& (granularity-1).U)(log2Floor(inwords2), gran_log), 0.U(gran_log.W))
 
-        io.outlen := padded1 +& padded2
+        io.out.len := padded1 +& padded2
     } else {
-        io.outlen := io.len1 +& io.len2
+        io.out.len := io.in1.len +& io.in2.len
     }
 
-    override def desiredName = s"MergeStaged_$inwords1"
+    override def desiredName = s"Merge_$inwords1"
 }
 
-object MergeStaged extends App {
+object Merge extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new MergeStaged))
+        Seq(ChiselGeneratorAnnotation(() => new Merge))
     )
 }
