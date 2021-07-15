@@ -6,13 +6,13 @@ This repository contains chisel3 RTL code for the edge compression and reduction
 
 The module takes in 1024 10-bit pixels and passes them in groups of 16 to 64 individual lossless compressors. There is also an option to reduce the number of bits per pixel to 7 by leveraging the poisson noise of the pixel value (lossy). 
 
-The compressors group the bits with same significance together and then report the position of the last non-zero element. With the assumption that most pixel values are close to zero, this method will discard a lot of zeros and yield a good compression ratio.
+The compressors group the bits with same significance together and then report the position of the last non-zero element. With the assumption that most pixel values are close to zero, this method will discard a lot of zeros and yield a good compression ratio. This can be thought of as dynamically adjusting the bit width of the pixels in groups of 16.
 
 The variable-length output of those 64 individual compressors is then merged together to yield one continuous output.
 
 All this happens within a single clock tick.
 
-To most effictively use the on-chip memory, the output across multiple clock ticks is buffered and merged until a write will fill a memory block most effictively.
+To most effectively use the on-chip memory, the output across multiple clock ticks is buffered and packed until a write will fill an entire memory region.
 
 ## Usage
 
