@@ -3,6 +3,7 @@ package compression
 import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
+import chisel3.experimental.BundleLiterals._
 
 import scala.math.max
 
@@ -15,7 +16,7 @@ import scala.math.max
  *  @param wordsize Size of the input words of data
  *  @param numblocks Number of 1024-bit blocks to write at once
  */
-class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int = 16, val numblocks:Int = 16) extends Module {
+class Packer(inwords:Int = 64*10 + 64*6/16, wordsize:Int = 16, numblocks:Int = 16) extends Module {
     val headerbits: Int = 16
 
     require(inwords > 0)
@@ -27,8 +28,7 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
     val reg_size = numblocks*(1024 - headerbits)/wordsize
 
     val io = IO(new Bundle {
-        val in = Input(Vec(inwords, UInt(wordsize.W)))              // Incoming data
-        val len = Input(UInt((log2Floor(inwords)+1).W))             // Number of wordsize-bit blocks in the input. len=0 inputs will not be counted in blocks_merged. 
+        val in = Input(new DynamicData(inwords, elemsize = wordsize))  // Incoming data
         val frame_num = Input(UInt(16.W))                           // Frame number of the data
         val fifo_full = Input(Bool())                               // almost full signal from FIFO (may discard data when high)
         val poisson = Input(Bool())
@@ -39,25 +39,24 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
         val data_dropped = Output(Bool())                           // Flag that turns on when data is dropped and turns off after the next successful write
     })
 
-    val data_reg = Reg(Vec(reg_size, UInt(wordsize.W)))
-    val datalen_reg = RegInit(0.U((log2Floor(reg_size)+1).W))
+    val data_reg = RegInit(0.U.asTypeOf(new DynamicData(reg_size, elemsize = wordsize)))
     val data_positions_reg = RegInit(VecInit(Seq.fill(numblocks)(63.U(6.W))))
     val frame_nums_reg = RegInit(VecInit(Seq.fill(numblocks)(0.U(8.W))))
 
     // Merger to pack the shifts together
-    val merger = Module(new MergeStaged(
+    val merger = Module(new Merge(
         wordsize = wordsize, 
         granularity = 1, 
         inwords1 = reg_size,
         inwords2 = inwords,
     ))
 
-    val next_block = merger.io.outlen > reg_size.U
+    val next_block = merger.io.out.len > reg_size.U
 
     // Calculate where the new input will be located
     val starts_in_block = Wire(UInt(log2Ceil(numblocks).W))
-    starts_in_block := (datalen_reg * (wordsize / headerbits).U / ((1024 - headerbits) / headerbits).U) % numblocks.U
-    val pos_in_block = (datalen_reg * (wordsize / headerbits).U) % ((1024 - headerbits) / headerbits).U
+    starts_in_block := (data_reg.len * (wordsize / headerbits).U / ((1024 - headerbits) / headerbits).U) % numblocks.U
+    val pos_in_block = (data_reg.len * (wordsize / headerbits).U) % ((1024 - headerbits) / headerbits).U
     when (io.soft_rst) {
         for (i <- 0 until numblocks) {
             data_positions_reg(i) := 63.U
@@ -106,23 +105,19 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
     }
 
     // connect data paths to registers
-    merger.io.len1 := datalen_reg
-    merger.io.data1 := data_reg
-    merger.io.len2 := io.len
-    merger.io.data2 := io.in
+    merger.io.in1 := data_reg
+    merger.io.in2 := io.in
     when (next_block && !io.soft_rst) {
         // Set register to store all data that doesn't fit in the write
-        for (i <- 0 until merger.io.out.length - reg_size) {
-            data_reg(i) := merger.io.out(reg_size + i)
-        }
-        datalen_reg := merger.io.outlen - reg_size.U
+        for (i <- reg_size until merger.io.out.data.length) data_reg.data(i - reg_size) := merger.io.out.data(i)
+        data_reg.len  := merger.io.out.len - reg_size.U
     }.otherwise {
-        data_reg := merger.io.out.slice(0, reg_size)
+        data_reg.data := merger.io.out.data.slice(0, reg_size)
 
         when (io.soft_rst) {
-            datalen_reg := 0.U
+            data_reg.len := 0.U
         }.otherwise {
-            datalen_reg := merger.io.outlen
+            data_reg.len := merger.io.out.len
         }
     }
 
@@ -141,7 +136,7 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
     // We always fill up all of them
     io.blocks_used := numblocks.U
 
-    val merger_out_uint = Cat(merger.io.out.slice(0, reg_size))
+    val merger_out_uint = Cat(merger.io.out.data.slice(0, reg_size))
     for (i <- 0 until numblocks) {
         // block without first bit
         val outdata = Cat(io.poisson, data_positions(i), frame_nums(i), merger_out_uint((numblocks - i)*(1024 - headerbits) - 1, (numblocks - i - 1)*(1024 - headerbits)))
@@ -149,9 +144,9 @@ class ContinuousPackerTight(val inwords:Int = 64*10 + 64*6/16, val wordsize:Int 
     }
 }
 
-object ContinuousPackerTight extends App {
+object Packer extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new ContinuousPackerTight))
+        Seq(ChiselGeneratorAnnotation(() => new Packer))
     )
 }

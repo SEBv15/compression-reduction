@@ -23,15 +23,15 @@ import testUtils._
  *
  *  @author Sebastian Strempfer
  */
-class ContinuousPackerTightTest extends FlatSpec with ChiselScalatestTester with Matchers {
+class PackerTest extends FlatSpec with ChiselScalatestTester with Matchers {
     val q = new Queue[List[Int]]()
     val poissonq = new Queue[Int]()
     val frameq = new Queue[Int]()
 
     val maxwords = 64*10 + 64*6/16
 
-    it should "test ContinuousPackerTight with random data" taggedAs UnitTestTag in {
-        test(new ContinuousPackerTight).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+    "Packer" should "pack random data correctly" taggedAs UnitTestTag in {
+        test(new Packer).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             c.io.fifo_full.poke(0.B)
             c.io.poisson.poke(0.B)
             c.io.soft_rst.poke(0.B)
@@ -72,12 +72,12 @@ class ContinuousPackerTightTest extends FlatSpec with ChiselScalatestTester with
                 }
 
                 for (i <- 0 until len) {
-                    c.io.in(i).poke(data(i).U)
+                    c.io.in.data(i).poke(data(i).U)
                 }
                 for (i <- len until maxwords) {
-                    c.io.in(i).poke(0.U)
+                    c.io.in.data(i).poke(0.U)
                 }
-                c.io.len.poke(len.U)
+                c.io.in.len.poke(len.U)
 
                 // Add to queue and pad with metadata
                 q += data.toList
