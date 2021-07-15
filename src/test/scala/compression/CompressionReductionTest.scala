@@ -28,7 +28,7 @@ import org.scalatest.Tag
  *  @author Sebastian Strempfer
  */
 class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    val rows = 128
+    val rows = 64
 
     var pixel_q = new Queue[Array[Array[Int]]]
 
@@ -157,7 +157,7 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
         }
     }
 
-    it should "test with random data" + poissonString taggedAs FullTestTag in {
+    "CompressionReduction" should "work with random data" + poissonString taggedAs FullTestTag in {
         test(new CompressionReduction(rows, 8)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val r = new Random(1)
 

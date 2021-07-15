@@ -18,10 +18,10 @@ import testUtils._
 class HierarchicalReductionTest extends FlatSpec with ChiselScalatestTester with Matchers {
     // Number of compressors to test the reduction stage with (32 is max for me before running out of memory)
     val ncompressors = 16
-    val nelems = 7
+    val nelems = 10
     val maxblocks = 128
 
-    it should "test-hierachical-reduction" /*taggedAs UnitTestTag*/ in {
+    "HierarchicalReduction" should "work correctly" taggedAs UnitTestTag in {
         // test case body here
         test(new HierarchicalReduction(ncompressors, nelems, 16, maxblocks)) { c =>
             val r = new Random(1) // remove the seed to get a completely random test. It is there to make test case failures reproducable.
@@ -34,26 +34,33 @@ class HierarchicalReductionTest extends FlatSpec with ChiselScalatestTester with
                 // Generate random input data and give it to the module
                 for (i <- 0 until ncompressors) {
                     lens(i) = r.nextInt(nelems+1)
-                    c.io.headerin(i).poke(lens(i).U)
+                    c.io.in(i).len.poke(lens(i).U)
                     for (j <- 0 until lens(i))
                         inp(i)(j) = r.nextInt(maxval+1)
                     for (j <- 0 until nelems)
-                        c.io.datain(i)(j).poke(inp(i)(j).U)
+                        c.io.in(i).data(j).poke(inp(i)(j).U)
                 }
 
                 // Get the output and put it into an array
-                var outlen = c.io.outlen.peek().litValue.toInt
+                var outlen = c.io.out.len.peek().litValue.toInt
                 val out = new Array[BigInt](outlen)
                 for (i <- 0 until outlen) {
-                    out(i) = c.io.out(i).peek().litValue
+                    out(i) = c.io.out.data(i).peek().litValue
                 }
 
-                val (headers, num_3bits) = getHeaders(out, ncompressors, 3, 16)
+                val (headers, num_4bits) = getHeaders(out, ncompressors, 4, 16)
 
-                val red_out = reverseMergeWeird(out.slice(ncompressors*2/16, out.length), (num_3bits*3 + 15)/16, calculateReductionOutputLength(headers, maxblocks, nelems), (ncompressors*3 + 15)/16)
+                //val red_out = reverseMergeWeird(out.slice(ncompressors*2/16, out.length), (num_3bits*3 + 15)/16, calculateReductionOutputLength(headers, maxblocks, nelems), (ncompressors*3 + 15)/16)
+                val red_out = out.slice(ncompressors*2/16 + (num_4bits*4 + 15)/16, out.length)
 
-                val reversed = reverseWeirdReduction(red_out.slice((ncompressors*3 + 15)/16, red_out.length), headers, maxblocks, nelems)
+                val reversed = reverseReduction(red_out, headers, maxblocks, nelems)
 
+                // println(lens.mkString(" "))
+                // println(headers.mkString(" "))
+                // println(out.slice(ncompressors*2/16, ncompressors*2/16 + 3).mkString(" "))
+                // println(num_4bits)
+                // println(reversed.map(e => f"${e}%05d").mkString(" "))
+                // println(inp.map(_.map(e => f"${e}%05d").mkString(" ")).mkString("\n"))
                 // Check if the input data is the same as the reversed output
                 for (i <- 0 until ncompressors)
                     for (j <- 0 until lens(i))

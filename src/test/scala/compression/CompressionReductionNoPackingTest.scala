@@ -26,7 +26,7 @@ import org.scalatest.Tag
  *  @author Sebastian Strempfer
  */
 class CompressionReductionNoPackingTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    it should "test CompressionReductionNoPackingTest with random data" taggedAs UnitTestTag in {
+    "CompressionReductionNoPacking" should "work with random data" taggedAs UnitTestTag in {
         test(new CompressionReductionNoPacking).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
             val r = new Random(1)
             for (n <- 0 until 100) {
@@ -40,10 +40,10 @@ class CompressionReductionNoPackingTest extends FlatSpec with ChiselScalatestTes
                     }
                 }
 
-                val datalen = c.io.outlen.peek().litValue.toInt
+                val datalen = c.io.out.len.peek().litValue.toInt
                 val data: Array[BigInt] = Array.fill(64*(6+16*10) / 16)(0)
                 for (i <- 0 until datalen) {
-                    data(i) = c.io.out(i).peek().litValue
+                    data(i) = c.io.out.data(i).peek().litValue
                 }
 
                 val (headers, num_4bits) = getHeaders(data, 64, 4, 16)

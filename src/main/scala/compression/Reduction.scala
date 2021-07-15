@@ -16,74 +16,47 @@ import scala.math.pow
  *  @author Sebastian Strempfer
  *
  *  @param ninputs The number of input vectors
- *  @param numblocks The length of each input vector
- *  @param blockwidth The size of the UInt in the vector
+ *  @param nelems The length of each input vector
+ *  @param elemsize The size of the UInt in the vector
  *  @param maxblocks The maximum number of blocks/elements/words any merge stage should have as input (0 = no limit)
  */
-class Reduction(val ninputs:Int = 64, val numblocks:Int = 10, val blockwidth:Int = 16, val maxblocks:Int = 128) extends Module {
+class Reduction(ninputs:Int = 64, nelems:Int = 10, elemsize:Int = 16, maxblocks:Int = 128) extends Module {
     require(isPow2(ninputs))
     require(ninputs > 0)
-    require(numblocks > 0)
-    require(blockwidth > 0)
-    require(maxblocks >= numblocks || maxblocks == 0)
+    require(nelems > 0)
+    require(elemsize > 0)
+    require(maxblocks >= nelems || maxblocks == 0)
 
     val io = IO(new Bundle {
-        val in = Input(Vec(ninputs, Vec(numblocks, UInt(blockwidth.W))))
-        val inlengths = Input(Vec(ninputs, UInt((log2Floor(numblocks) + 1).W)))
-        val out = Output(Vec(ninputs*numblocks, UInt(blockwidth.W)))
-        val outlength = Output(UInt((log2Floor(ninputs*numblocks) + 1).W))
+        val in = Input(Vec(ninputs, new DynamicData(nelems, elemsize = elemsize)))
+        val out = Output(new DynamicData(ninputs*nelems, elemsize = elemsize))
     })
 
-    // Make the first stage of mergers
-    val stage1 = ListBuffer.fill(ninputs/2)(Module(new MergeStaged(blockwidth, numblocks, numblocks, 0, 0)))
+    var stages: ListBuffer[List[Merge]] = new ListBuffer[List[Merge]]()
+
+    stages += List.fill(ninputs/2)(Module(new Merge(wordsize = elemsize, inwords1 = nelems, inwords2 = nelems)))
     for (i <- 0 until ninputs/2) {
-        stage1(i).io.len1 := io.inlengths(2*i)
-        stage1(i).io.len2 := io.inlengths(2*i+1)
-        stage1(i).io.data1 := io.in(2*i)
-        stage1(i).io.data2 := io.in(2*i+1)
+        stages(0)(i).io.in1 := io.in(2*i)
+        stages(0)(i).io.in2 := io.in(2*i+1)
     }
 
-    // Use a list for all the other stages
-    var stages:ListBuffer[ListBuffer[MergeStaged]] = new ListBuffer[ListBuffer[MergeStaged]]()
-    stages.append(stage1)
-
-    var nb = 2*numblocks; // number of blocks out of the first merge stage
-    var div = 1; // what the number of blocks should be divided by relative to the number of blocks without a block limit
-
-    // Add stages as needed and make them take the previous stage as input
-    for (n <- 1 until log2Up(ninputs)) {
-        var merge = false;
-        if (nb > maxblocks && maxblocks != 0) {
-            div *= 2;
-            nb /= 2;
-            merge = true;
+    var granularity = 1
+    for (n <- 1 until log2Ceil(ninputs)) {
+        if (maxblocks < nelems*(1 << n) / granularity && maxblocks != 0) {
+            granularity *= 2
         }
-        stages.append(ListBuffer.fill(ninputs/pow(2, n+1).toInt)(Module(new MergeStaged(blockwidth*div, numblocks*pow(2, n).toInt/div, numblocks*pow(2, n).toInt/div, 0, 0))))
 
-        // If number of blocks needs to be divided, group two inputs together before feeding it into the next stage
-        if (merge) {
-            for (i <- 0 until ninputs/pow(2, n+1).toInt) {
-                stages(n)(i).io.len1 := (stages(n-1)(2*i).io.outlen +& 1.U) / 2.U // Ceil division
-                stages(n)(i).io.len2 := (stages(n-1)(2*i+1).io.outlen +& 1.U) / 2.U
-                stages(n)(i).io.data1 := (0 until nb).map(x => Cat(stages(n-1)(2*i).io.out(2*x+1), stages(n-1)(2*i).io.out(2*x)))
-                stages(n)(i).io.data2 := (0 until nb).map(x => Cat(stages(n-1)(2*i+1).io.out(2*x+1), stages(n-1)(2*i+1).io.out(2*x)))
-            }
-        } else {
-            for (i <- 0 until ninputs/pow(2, n+1).toInt) {
-                stages(n)(i).io.len1 := stages(n-1)(2*i).io.outlen
-                stages(n)(i).io.len2 := stages(n-1)(2*i+1).io.outlen
-                stages(n)(i).io.data1 := stages(n-1)(2*i).io.out
-                stages(n)(i).io.data2 := stages(n-1)(2*i+1).io.out
-            }
+        stages += List.fill(ninputs/(1 << n + 1))(Module(new Merge(wordsize = elemsize, inwords1 = nelems*(1 << n), inwords2 = nelems*(1 << n), granularity = granularity)))
+
+        for (i <- 0 until stages(n).length) {
+            stages(n)(i).io.in1 := stages(n - 1)(2 * i).io.out
+            stages(n)(i).io.in2 := stages(n - 1)(2 * i + 1).io.out
         }
-        nb *= 2;
     }
 
-    val data_uint = stages(stages.length - 1)(0).io.out.asUInt()
-    io.out := (0 until ninputs*numblocks).map(x => data_uint(blockwidth*(x + 1) - 1, blockwidth*x))
-    io.outlength := stages(stages.length - 1)(0).io.outlen * div.U
+    io.out := stages(stages.length - 1)(0).io.out
 
-    override def desiredName = s"Reduction_${ninputs}x$numblocks"
+    override def desiredName = s"Reduction_${ninputs}x$nelems"
 }
 
 object Reduction extends App {

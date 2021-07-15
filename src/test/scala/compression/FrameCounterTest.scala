@@ -12,7 +12,7 @@ import scala.util.Random
  *  @author Sebastian Strempfer
  */
 class FrameCounterTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    it should "test FrameCounter" taggedAs UnitTestTag in {
+    "FrameCounter" should "work correctly" taggedAs UnitTestTag in {
         test(new FrameCounter(16)) { c =>
             c.io.data_valid.poke(1.B)
             c.io.soft_rst.poke(0.B)

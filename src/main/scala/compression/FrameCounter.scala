@@ -10,7 +10,7 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *
  *  @param counterwidth How many bits to use for the frame counter
  */
-class FrameCounter(val counterwidth: Int = 16) extends Module {
+class FrameCounter(counterwidth: Int = 16) extends Module {
     require(counterwidth > 4)
 
     val io = IO(new Bundle {

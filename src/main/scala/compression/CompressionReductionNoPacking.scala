@@ -30,47 +30,20 @@ class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int
 
         // When compressing, this will be the compressed data from multiple shifts merged together, formatted into 1024-bit words to fit the FIFO.
         // Otherwise it will be the raw pixel data row by row.
-        val out = Output(Vec(outwords, UInt(16.W)))
-
-        // Number of blocks used (max = 10).
-        val outlen = Output(UInt((log2Floor(outwords)+1).W))
+        val out = Output(new DynamicData(outwords, elemsize = 16))
     })
 
-    // Encode the pixels from 10 bits to 7 using poisson noise
-    val encoder = List.fill(pixel_rows)(List.fill(pixel_cols)(Module(new PoissonEncoding)))
-    val encoded_pixels = Wire(Vec(pixel_rows, Vec(pixel_cols, UInt(7.W))))
-    for (i <- 0 until pixel_rows) {
-        for (j <- 0 until pixel_cols) {
-            encoder(i)(j).io.in := io.pixels(i)(j)
-            encoded_pixels(i)(j) := encoder(i)(j).io.out
-        }
-    }
-
-    // Compress the pixels in 4x4 squares, choosing the encoded or raw pixels
-    val compressors = List.fill(pixel_rows/2)(Module(new LengthCompress(16, 10)))
-    when (io.poisson) {
-        for (i <- 0 until pixel_rows by 4) {
-            for (j <- 0 until pixel_cols by 4) {
-                compressors(i/2 + j/4).io.in := (0 until 4).map(x => encoded_pixels(i+x).slice(j, j+4)).reduce((a, b) => a ++ b)
-            }
-        }
-    }.otherwise {
-        for (i <- 0 until pixel_rows by 4) {
-            for (j <- 0 until pixel_cols by 4) {
-                compressors(i/2 + j/4).io.in := (0 until 4).map(x => io.pixels(i+x).slice(j, j+4)).reduce((a, b) => a ++ b)
-            }
-        }
-    }
+    val encoders = Module(new Encoders(pixel_rows, pixel_cols))
+    encoders.io.pixels := io.pixels
+    encoders.io.poisson := io.poisson
 
     // Pass the compressed pixels through the reduction stage
     val reducer = Module(new HierarchicalReduction(pixel_rows/2, 10, 16, maxblocks))
     for (i <- 0 until pixel_rows/2) {
-        reducer.io.datain(i) := compressors(i).io.data
-        reducer.io.headerin(i) := compressors(i).io.header
+        reducer.io.in(i) := encoders.io.out(i)
     }
 
     io.out := reducer.io.out
-    io.outlen := reducer.io.outlen
 }
 
 object CompressionReductionNoPacking extends App {

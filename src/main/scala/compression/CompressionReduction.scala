@@ -78,15 +78,15 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     compressor.io.poisson := io.poisson
 
     // Pass the data through our merger / 2 block ensurer
-    val packer = Module(new ContinuousPackerTight((reduction_bits + 15)/16, 16, numblocks))
+    val packer = Module(new Packer((reduction_bits + 15)/16, 16, numblocks))
     packer.io.soft_rst := io.soft_rst
     packer.io.poisson := io.poisson
-    packer.io.in := compressor.io.out
+    packer.io.in.data := compressor.io.out.data
     // Only send if the data is valid and we have received the first sync pulse
     when (io.data_valid && (received_first_sync || io.frame_sync) && ~io.soft_rst) {
-        packer.io.len := compressor.io.outlen
+        packer.io.in.len := compressor.io.out.len
     }.otherwise {
-        packer.io.len := 0.U
+        packer.io.in.len := 0.U
     }
     packer.io.frame_num := shift_num
     packer.io.fifo_full := io.fifo_full
