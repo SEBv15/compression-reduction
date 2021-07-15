@@ -11,7 +11,7 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *  @param nelems The number elems per channel
  *  @param elemsize The number of bits per elem
  */
-class BitShufflePerChannel(val nelems:Int = 16, val elemsize:Int = 10) extends Module {
+class BitShuffle(val nelems:Int = 16, val elemsize:Int = 10) extends Module {
     require(nelems > 0)
     require(elemsize > 0)
 
@@ -27,13 +27,11 @@ class BitShufflePerChannel(val nelems:Int = 16, val elemsize:Int = 10) extends M
         }
         io.out(i) := Reverse(Cat(tmp))
     }
-
-    override def desiredName = "BitShuffle"
 }
 
-object BitShufflePerChannel extends App {
+object BitShuffle extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new BitShufflePerChannel))
+        Seq(ChiselGeneratorAnnotation(() => new BitShuffle))
     )
 }
