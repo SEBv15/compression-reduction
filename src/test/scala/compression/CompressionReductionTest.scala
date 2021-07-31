@@ -19,6 +19,8 @@ import scala.util.Random
 
 import testUtils._
 
+import java.io._
+
 import org.scalatest.Tag
 
 /** Test the whole compression & reduction stage by giving it data and checking if what comes out is the same as what we inserted
@@ -198,6 +200,49 @@ class CompressionReductionTest extends FlatSpec with ChiselScalatestTester with 
                 }
 
                 c.clock.step()
+            }
+        }
+    }
+
+    it should "process real data" in {
+        test(new CompressionReduction(rows, 8)).withAnnotations(Seq(VerilatorBackendAnnotation)) { c =>
+            val frames = load_data_file("python-simulation/data/ptychography.bin")
+
+            c.io.fifo_full.poke(0.B)
+            c.io.soft_rst.poke(0.B)
+            c.io.bypass_compression.poke(0.B)
+            c.io.poisson.poke(0.B)
+            c.io.data_valid.poke(0.B)
+            c.io.frame_sync.poke(1.B)
+            c.clock.step()
+            c.io.data_valid.poke(1.B)
+            c.io.frame_sync.poke(0.B)
+
+            for (i <- 0 until frames.length) {
+                for (j <- 0 until 16) {
+                    for (row <- 0 until rows) {
+                        for (col <- 0 until 8) {
+                            c.io.pixels(row)(col).poke(frames(i)(row + (128 - rows) / 2)(col + 8*j).U)
+                        }
+                    }
+
+                    if (c.io.write_enable.peek().litValue != 0) {
+                        println("Got Data")
+                        val bos = new BufferedOutputStream(new FileOutputStream("compressed.bin", true))
+                        for (i <- 0 until c.io.blocks_used.peek().litValue.toInt) {
+                            val byteArray : Array[Byte] = Array.fill(1024/8)(0)
+                            var block = c.io.blocks(i).peek().litValue
+                            for (j <- 0 until 1024/8) {
+                                byteArray(j) = (block & 255).toInt.toByte
+                                block >>= 8
+                            }
+                            bos.write(byteArray.reverse)
+                        }
+                        bos.close()
+                    }
+
+                    c.clock.step()
+                }
             }
         }
     }
