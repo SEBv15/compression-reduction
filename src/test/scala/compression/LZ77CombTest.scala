@@ -12,7 +12,7 @@ import scala.util.Random
  *  @author Sebastian Strempfer
  */
 class LZ77CombTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    "LZ77Comb" should "should work for some inputs" taggedAs UnitTestTag in {
+    "LZ77Comb" should "should work for some inputs" in {
         test(new LZ77Comb(128, 8, 64)) { c =>
             for (i <- 0 until 128)
                 c.io.data(i).poke((i + 1).U)

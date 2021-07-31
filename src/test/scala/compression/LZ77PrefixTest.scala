@@ -12,7 +12,7 @@ import scala.util.Random
  *  @author Sebastian Strempfer
  */
 class LZ77PrefixTest extends FlatSpec with ChiselScalatestTester with Matchers {
-    "LZ77Prefix" should "should indentify the correct prefixes" taggedAs UnitTestTag in {
+    "LZ77Prefix" should "should indentify the correct prefixes" in {
         test(new LZ77Prefix(8, 4, 5)) { c =>
             for (i <- 0 until 8)
                 c.io.win(i).poke(i.U)
