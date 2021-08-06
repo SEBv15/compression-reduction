@@ -18,31 +18,37 @@ class VecMax(length: Int, elemsize: Int) extends Module {
     val io = IO(new Bundle {
         val in = Input(Vec(length, UInt(elemsize.W)))
         val max = Output(UInt(elemsize.W))
-        val pos = Output(UInt(log2Ceil(length + 1).W))
+        val pos = Output(UInt(log2Ceil(length).W))
     })
 
     if (length == 1) {
+        // Base case. There is only one possible maximum for a Vec of size one.
         io.max := io.in(0)
         io.pos := 0.U
     } else {
-        val length0 = if (isPow2(length)) length >> 1 else 1 << log2Floor(length)
+        // Split up the input until their length is 1
+        val length0 = if (isPow2(length)) length >> 1 else 1 << log2Floor(length) // Make the first length be a power of two >= length1
         val length1 = length - length0
 
-        val fo0 = Module(new VecMax(length0, elemsize)).io
-        val fo1 = Module(new VecMax(length1, elemsize)).io
+        // Recursively create modules for the smaller sub-problems
+        val vm0 = Module(new VecMax(length0, elemsize)).io
+        val vm1 = Module(new VecMax(length1, elemsize)).io
 
-        fo0.in := io.in.slice(0, length0)
-        fo1.in := io.in.slice(length0, length)
+        vm0.in := io.in.slice(0, length0)
+        vm1.in := io.in.slice(length0, length)
 
-        when (fo0.max >= fo1.max) {
-            io.max := fo0.max
-            io.pos := fo0.pos
+        // Combine the output of the two modules
+        when (vm0.max >= vm1.max) {
+            io.max := vm0.max
+            io.pos := vm0.pos
         }.otherwise {
-            io.max := fo1.max
+            io.max := vm1.max
+            // Since length0 is always a power of two, simply pad a 1 in front of the position
             if (length == 2) {
                 io.pos := 1.U(1.W)
             } else {
-                io.pos := Cat(1.U(1.W), fo1.pos(log2Floor(length0) - 1, 0))
+                val posbits = io.pos.getWidth
+                io.pos := Cat(1.U(1.W), Cat(0.U((posbits - 1).W), vm1.pos)(posbits - 2, 0))
             }
         }
     }
@@ -53,6 +59,6 @@ class VecMax(length: Int, elemsize: Int) extends Module {
 object VecMax extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new VecMax(length = 32, elemsize = 16)))
+        Seq(ChiselGeneratorAnnotation(() => new VecMax(length = 32, elemsize = 3)))
     )
 }
