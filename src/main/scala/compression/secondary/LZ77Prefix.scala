@@ -36,7 +36,7 @@ class LZ77Prefix(window: Int, length: Int, wordsize: Int) extends Module {
         masks(i)(j) := masks(i - 1)(j) && io.win(j + i) === io.input(i)
     }
 
-    val position_mods = List.tabulate(length)(i => Module(new LZ77FirstOne(window - i)).io)
+    val position_mods = List.tabulate(length)(i => Module(new FirstOne(window - i)).io)
     for (i <- 0 until length) {
         position_mods(i).in := masks(i).reverse
     }
@@ -62,39 +62,9 @@ class LZ77Prefix(window: Int, length: Int, wordsize: Int) extends Module {
     override def desiredName = s"LZ77Prefix_${window}_${length}"
 }
 
-class LZ77FirstOne(length: Int) extends Module {
-    require(length > 0)
-
-    val io = IO(new Bundle {
-        val in = Input(Vec(length, Bool()))
-        val out = Output(UInt(log2Ceil(length + 1).W))
-    })
-
-    if (length == 1) {
-        io.out := ~io.in(0)
-    } else {
-        val length0 = if (isPow2(length)) length >> 1 else 1 << log2Floor(length)
-        val length1 = length - length0
-
-        val fo0 = Module(new LZ77FirstOne(length0)).io
-        val fo1 = Module(new LZ77FirstOne(length1)).io
-
-        fo0.in := io.in.slice(0, length0)
-        fo1.in := io.in.slice(length0, length)
-
-        when (fo0.out(fo0.out.getWidth - 1) === 0.U) {
-            io.out := fo0.out
-        }.otherwise {
-            io.out := (1 << log2Ceil(length) - 1).U +& fo1.out
-        }
-    }
-
-    override def desiredName = s"LZ77FirstOne_${length}"
-}
-
 object LZ77Prefix extends App {
     (new chisel3.stage.ChiselStage).execute(
         Array("-X", "verilog"),
-        Seq(ChiselGeneratorAnnotation(() => new LZ77Prefix(window = 64, length = 4, wordsize = 8)))
+        Seq(ChiselGeneratorAnnotation(() => new LZ77Prefix(window = 32, length = 4, wordsize = 16)))
     )
 }

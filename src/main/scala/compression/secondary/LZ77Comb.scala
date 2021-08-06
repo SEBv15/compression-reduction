@@ -30,7 +30,7 @@ class LZ77Comb(length: Int, wordsize: Int, window: Int) extends Module {
     val io = IO(new Bundle {
         val data = Input(Vec(length, UInt(wordsize.W)))
         val compare_to = Input(Vec(length + window, UInt(wordsize.W)))
-        val out = Output(new DynamicData(length, elemsize = 9))
+        val out = Output(new DynamicData(length, elemsize = wordsize + 1))
     })
 
     val prefix_mods = List.tabulate(length - input_size + 1)(i => Module(new LZ77Prefix(window = window, length = input_size, wordsize = wordsize)).io)
