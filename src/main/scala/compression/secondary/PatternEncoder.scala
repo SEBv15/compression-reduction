@@ -4,7 +4,12 @@ import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
-/** Takes in a 16-bit UInt and returns the position of the first and last 1 digit encoded in 7 bits.
+/** Takes in a 16-bit UInt and returns the positions of the first and last 1 digit encoded in 7 bits.
+ *  
+ *  The output is decoded as follows:
+ *  The first 3 bits always encode the position of the first 1 looking from hi.
+ *  The last 4 bits do the same, but looking from lo
+ *  If the sum of the two values is >= 15, subtract both numbers from 15 to get their actual value. Otherwise use them as-is.
  *
  *  @author Sebastian Strempfer
  */
