@@ -4,35 +4,54 @@ import chisel3._
 import chisel3.util._
 import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
 
-/** Takes in a 16-bit UInt and returns the positions of the first and last 1 digit encoded in 7 bits.
+/** Takes in a 16-bit UInt and returns the input encoded using 8 bits if possible. 
+ *  The module can encode any input with one or two 1 digits, or any single run of 1 digits. It cannot encode all 0 digits.
  *  
  *  The output is decoded as follows:
- *  The first 3 bits always encode the position of the first 1 looking from hi.
- *  The last 4 bits do the same, but looking from lo
- *  If the sum of the two values is >= 15, subtract both numbers from 15 to get their actual value. Otherwise use them as-is.
+ *  Take the sum of out[3:0] + out[6:4] (using inclusive verilog notation), and determine how to proceed based on the result.
+ * 
+ *  If sum < 15:
+ *    out[6:4] encodes the position of the first 1 digit from hi
+ *    out[3:0] encodes the position of the first 1 digit from lo
+ *    out[7] encodes the value of the bits between the positions
+ *  If sum > 15:
+ *    Do the same thing but subtract out[6:4] and out[3:0] from 15 before
+ *  If sum == 15:
+ *    out[7:4] encodes the position of the lone 1 digit starting from lo
+ *
+ *  Canencode is true when the module could encode the input. Otherwise the output is garbage.
  *
  *  @author Sebastian Strempfer
  */
 class PatternEncoder extends Module {
     val io = IO(new Bundle {
         val in = Input(UInt(16.W))
-        val out = Output(UInt(7.W))
+        val out = Output(UInt(8.W))
+        val canencode = Output(Bool())
     })
 
-    // val count_ones = Module(new CountOnes(16)).io
-    // count_ones.in := io.in.asBools()
-    // io.canencode := count_ones.out === 2.U
+    // Check if we can report the location of the 1s
+    val count_ones = Module(new CountOnes(16)).io
+    count_ones.in := io.in.asBools()
 
-    val first_one_from_hi = Module(new FirstOne(16)).io
-    first_one_from_hi.in := io.in.asBools()
+    // Check if we can report that there is a run of 1s between the encoded endpoints
+    val detect_run = Module(new DetectRun(16)).io
+    detect_run.in := io.in.asBools()
 
     val first_one_from_lo = Module(new FirstOne(16)).io
-    first_one_from_lo.in := io.in.asBools().reverse
+    first_one_from_lo.in := io.in.asBools()
 
-    when (first_one_from_hi.out(3)) {
-        io.out := Cat(7.U - first_one_from_hi.out(2,0), 15.U - first_one_from_lo.out)
+    val first_one_from_hi = Module(new FirstOne(16)).io
+    first_one_from_hi.in := io.in.asBools().reverse
+
+    io.canencode := count_ones.out === 1.U || count_ones.out === 2.U || detect_run.is_run
+
+    when (count_ones.out === 1.U) {
+        io.out := Cat(first_one_from_lo.out(3, 0), 15.U(4.W) - first_one_from_lo.out(2, 0))
+    }.elsewhen (first_one_from_hi.out(3)) {
+        io.out := Cat(detect_run.is_run, 7.U(3.W) - first_one_from_hi.out(2,0), 15.U(4.W) - first_one_from_lo.out(3, 0))
     }.otherwise {
-        io.out := Cat(first_one_from_hi.out(2,0), first_one_from_lo.out)
+        io.out := Cat(detect_run.is_run, first_one_from_hi.out(2,0), first_one_from_lo.out(3, 0))
     }
 
     override def desiredName = "PatternEncoder"
