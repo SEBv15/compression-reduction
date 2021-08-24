@@ -21,6 +21,19 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *
  *  Canencode is true when the module could encode the input. Otherwise the output is garbage.
  *
+ *  Sample Python Decoding:
+ *  def PatternDecode(data):
+ *    lo = data & 15
+ *    hi = (data >> 4) & 7
+ *    if hi + lo == 15:
+ *      return 1 << (data >> 4)
+ *    if hi + lo > 15:
+ *      hi = 15 - hi
+ *      lo = 15 - lo
+ *    if data >> 7:
+ *      return ((1 << (16 - hi - lo)) - 1) << lo
+ *    return (1 << (15 - hi)) + (1 << lo)
+ *
  *  @author Sebastian Strempfer
  */
 class PatternEncoder extends Module {
