@@ -8,9 +8,10 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *
  *  @author Sebastian Strempfer
  *
- *  @param pixel_rows The number of pixel rows
- *  @param pixel_cols The number of pixel columns (currently required to be 8)
- *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
+ *  @param num_inputs Number of variable-length data inputs
+ *  @param input_maxsize The maximum length of each input
+ *  @param input_elemwidth The width of each element in every input
+ *  @param input_metadatawidth The width of the constant-sized inputs accompanying every variable-length input
  */
 class Coalescing(num_inputs: Int = 64, input_maxsize: Int = 10, input_elemwidth: Int = 16, input_metadatawidth: Int = 4) extends Module {
     require(num_inputs * input_metadatawidth % input_elemwidth == 0, "Metadata must be able to pack into elements")
