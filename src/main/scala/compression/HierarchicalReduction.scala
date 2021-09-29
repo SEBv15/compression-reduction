@@ -17,7 +17,7 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  */
 class HierarchicalReduction(ncompressors:Int = 64, nelems:Int = 10, elemsize:Int = 16, maxblocks:Int = 128) extends Module {
     require(isPow2(ncompressors))
-    require(ncompressors > 8)
+    require(ncompressors >= 8)
     require(nelems > 0)
     require(elemsize >= 2)
     require(isPow2(elemsize))
@@ -28,7 +28,7 @@ class HierarchicalReduction(ncompressors:Int = 64, nelems:Int = 10, elemsize:Int
     val headerwidth = log2Floor(nelems) + 1
     val outsize = ncompressors*nelems + (ncompressors*2 + ncompressors*headerwidth + elemsize-1)/elemsize
 
-    require(elemsize % headerwidth == 0, "This makes the code cleaner")
+    require(elemsize % headerwidth == 0, "Headers must fit evenly into elements") // Requirement can be dropped with a refactor of the code
 
     val io = IO(new Bundle {
         val in = Input(Vec(ncompressors, new DynamicData(nelems, elemsize = elemsize)))

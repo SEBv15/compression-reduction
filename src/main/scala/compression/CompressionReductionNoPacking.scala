@@ -12,18 +12,18 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
  *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
  */
-class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 128) extends Module {
+class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val bits_per_pixel:Int = 10, val maxblocks:Int = 128) extends Module {
     require(isPow2(pixel_rows))
     require(isPow2(pixel_cols))
     require(pixel_cols == 8)
     require(pixel_rows >= 16)
 
     val big_one: BigInt = 1
-    val outwords = (pixel_rows/2*6+pixel_rows*8*10)/16
+    val outwords = (pixel_rows/2*6+pixel_rows*8*bits_per_pixel)/16
 
     val io = IO(new Bundle {
         // The raw 10-bit pixel data from a single shift (128x8 pixels).
-        val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(10.W))))
+        val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(bits_per_pixel.W))))
 
         // Whether to use poisson encoding
         val poisson = Input(Bool())
@@ -38,7 +38,7 @@ class CompressionReductionNoPacking(val pixel_rows:Int = 128, val pixel_cols:Int
     encoders.io.poisson := io.poisson
 
     // Pass the compressed pixels through the reduction stage
-    val reducer = Module(new HierarchicalReduction(pixel_rows/2, 10, 16, maxblocks))
+    val reducer = Module(new HierarchicalReduction(pixel_rows/2, bits_per_pixel, 16, maxblocks))
     for (i <- 0 until pixel_rows/2) {
         reducer.io.in(i) := encoders.io.out(i)
     }

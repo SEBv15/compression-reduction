@@ -24,7 +24,7 @@ class Merge(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 10
     require(inwords1 > 0)
     require(inwords2 > 0)
     require(granularity > 0 && isPow2(granularity), "Granularity must be a positive power of two")
-    require(inwords1 % granularity == 0 && inwords2 % granularity == 0, "Max input lengths must be a multiple of the granularity")
+    require(inwords1 % granularity == 0, "Max input lengths must be a multiple of the granularity")
     require(minwords1 >= 0)
     require(minwords1 < inwords1)
 
@@ -80,7 +80,10 @@ class Merge(val wordsize:Int = 16, val inwords1:Int = 100, val inwords2:Int = 10
     if (granularity > 1) {
         // Make the input lengths be a multiple of the granularity
         val padded1 = Cat((io.in1.len +& (granularity-1).U)(log2Floor(inwords1), gran_log), 0.U(gran_log.W))
-        val padded2 = Cat((io.in2.len +& (granularity-1).U)(log2Floor(inwords2), gran_log), 0.U(gran_log.W))
+        var padded2 = Cat((io.in2.len +& (granularity-1).U)(log2Floor(inwords2), gran_log), 0.U(gran_log.W))
+        if (inwords2 % granularity != 0) {
+            padded2 = io.in2.len 
+        }
 
         io.out.len := padded1 +& padded2
     } else {

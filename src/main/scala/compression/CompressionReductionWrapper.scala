@@ -14,7 +14,12 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  */
 class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 0) extends Module {
 
-    val comp = Module(new CompressionReduction(pixel_rows, pixel_cols, maxblocks))
+    val comp = Module(new CompressionReduction(
+        pixel_rows = pixel_rows, 
+        pixel_cols = pixel_cols, 
+        bits_per_pixel = 10,
+        maxblocks = maxblocks
+    ))
 
     val io = IO(new Bundle {
         val pixels = Input(UInt((pixel_rows*pixel_cols*10).W))
@@ -45,6 +50,8 @@ class CompressionReductionWrapper(val pixel_rows:Int = 128, val pixel_cols:Int =
     io.blocks_used := comp.io.blocks_used
     io.write_enable := comp.io.write_enable
     io.data_dropped := comp.io.data_dropped
+
+    override def desiredName = s"CompressionReductionWrapper_$pixel_rows"
 }
 
 object CompressionReductionWrapper extends App {

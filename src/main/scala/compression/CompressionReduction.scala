@@ -10,19 +10,20 @@ import chisel3.stage.{ChiselStage, ChiselGeneratorAnnotation}
  *
  *  @param pixel_rows The number of pixel rows
  *  @param pixel_cols The number of pixel columns (currently required to be 8)
+ *  @param bits_per_pixel Number of bits per pixel
  *  @param maxblocks Same as the maxblocks parameter in Reduction. Limits the granularity of the data reduction.
  */
-class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val maxblocks:Int = 0) extends Module {
+class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val bits_per_pixel:Int = 10, val maxblocks:Int = 0) extends Module {
 
     val big_one: BigInt = 1
-    val reduction_bits: Int = pixel_rows * pixel_cols / 16 * 6 + pixel_rows * pixel_cols * 10
+    val reduction_bits: Int = pixel_rows * pixel_cols / 16 * 6 + pixel_rows * pixel_cols * bits_per_pixel
     val numblocks: Int = (reduction_bits + (1024 - 16 - 1)) / (1024 - 16)
 
     println("Using " + pixel_rows + " pixel rows")
 
     val io = IO(new Bundle {
         // The raw 10-bit pixel data from a single shift (128x8 pixels).
-        val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(10.W))))
+        val pixels = Input(Vec(pixel_rows, Vec(pixel_cols, UInt(bits_per_pixel.W))))
 
         // Tell the module if there is still room to write. If high and data is supposed to be written, it will be dropped. 
         // Reaction is one tick delayed -> should be set high when there is only room for one write left (or earlier).
@@ -73,7 +74,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
     shift_num := frame_counter.io.shift_num
     received_first_sync := frame_counter.io.received_first_sync
 
-    val compressor = Module(new CompressionReductionNoPacking(pixel_rows, pixel_cols, maxblocks))
+    val compressor = Module(new CompressionReductionNoPacking(pixel_rows, pixel_cols, bits_per_pixel, maxblocks))
     compressor.io.pixels := io.pixels
     compressor.io.poisson := io.poisson
 
@@ -99,7 +100,7 @@ class CompressionReduction(val pixel_rows:Int = 128, val pixel_cols:Int = 8, val
 
     // Implement the bypass feature
     when (io.bypass_compression) {
-        val rawsize = pixel_rows * pixel_cols * 10
+        val rawsize = pixel_rows * pixel_cols * bits_per_pixel
         val rawUIntpadded = Cat(Cat((0 until pixel_rows).map(j => Cat(io.pixels(j)))), 0.U(1024.W))
         for (i <- 0 until (rawsize + 1023) / 1024) {
             data_reg(i) := rawUIntpadded(rawsize - 1024*(i - 1) - 1, rawsize - 1024*i)
