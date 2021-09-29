@@ -47,7 +47,7 @@ class FrameCounter(counterwidth: Int = 16) extends Module {
     when (io.soft_rst) {
         shift_num := 0.U
     }.otherwise {
-        when (io.frame_sync) {
+        when (io.frame_sync && io.data_valid) {
             // On frame sync, extract the frame number (discarding the last 4 shift number bits), increase it by one, and set the shift number to zero.
             // This way if the sync pulse and shift_num get out of sync, we start over on a new frame number. If they are in sync, the frame number would've been advanced that tick anyways.
             shift_num := Cat(shift_num(counterwidth-1, 4) + 1.U, 0.U(4.W))
