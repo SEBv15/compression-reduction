@@ -47,3 +47,21 @@ sbt 'testOnly compression.* -- -n "fullTest"'
 ```
 
 running tests can take a considerable amount of time on large modules. For example running the `fullTest` suite takes around 15 minutes.
+
+## Citation
+If you use this code for your research, please cite our paper:
+
+> S. Strempfer, K. Yoshii, M. Hammer, D. Bycul and A. Miceli, "Designing a Streaming Data Coalescing Architecture for Scientific Detector ASICs with Variable Data Velocity," 2021 3rd Annual Workshop on Extreme-scale Experiment-in-the-Loop Computing (XLOOP), 2021, pp. 8-14.
+
+Or via bibtex
+```latex
+@INPROCEEDINGS{9652802,
+  author={Strempfer, Sebastian and Yoshii, Kazutomo and Hammer, Mike and Bycul, Dawid and Miceli, Antonino},
+  booktitle={2021 3rd Annual Workshop on Extreme-scale Experiment-in-the-Loop Computing (XLOOP)}, 
+  title={Designing a Streaming Data Coalescing Architecture for Scientific Detector ASICs with Variable Data Velocity}, 
+  year={2021},
+  volume={},
+  number={},
+  pages={8-14},
+  doi={10.1109/XLOOP54565.2021.00007}}
+```
